@@ -4,7 +4,7 @@ import { ico, icons } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import {
   getPortfolios, getPortfolio, savePortfolio, deletePortfolio,
-  getFolders, getImages, getImage, blobURL,
+  getFolders, getImages, getAllImages, getImage, blobURL,
 } from '../storage/db.js';
 
 const LAYOUTS = [
@@ -121,10 +121,11 @@ async function openEditor(root, id, ctx) {
   const addBtn = h('button.icon-btn', { title: 'Add page', onclick: (e) => openLayoutMenu(e.currentTarget, 'add') }, [ico('plus')]);
   const layoutBtn = h('button.icon-btn', { title: 'Change layout', onclick: (e) => openLayoutMenu(e.currentTarget, 'change') }, [ico('layout')]);
   const bgBtn = h('button.icon-btn', { title: 'Page tone', onclick: () => cycleBg() }, [ico('image')]);
+  const moveBtn = h('button.icon-btn', { title: 'Reframe image (drag inside the slot)', onclick: () => toggleMove() }, [ico('move')]);
   const delBtn = h('button.icon-btn', { title: 'Delete page', onclick: () => deletePage() }, [ico('trash')]);
   const bar = h('div.pf-bar', {}, [
     prevBtn, indicator, nextBtn,
-    h('span.sepv'), addBtn, layoutBtn, bgBtn, delBtn,
+    h('span.sepv'), addBtn, layoutBtn, bgBtn, moveBtn, delBtn,
   ]);
 
   const topbar = buildTopbar({
@@ -138,7 +139,7 @@ async function openEditor(root, id, ctx) {
   const titleSpan = topbar.querySelector('.crumbs .cur');
 
   // --- state ---
-  let mode = 'spread', cur = 0, nUnits = 1, leaves = [], activePageIdx = 0;
+  let mode = 'spread', cur = 0, nUnits = 1, leaves = [], activePageIdx = 0, moveMode = false;
 
   // --- persistence ---
   let saveT = 0;
@@ -162,19 +163,45 @@ async function openEditor(root, id, ctx) {
     el.addEventListener('focus', () => { activePageIdx = page._idx; });
     return el;
   }
+  async function chooseImage(page, key) {
+    const picked = await pickImage(page.slots?.[key]);
+    if (picked === null) return;
+    page.slots = page.slots || {};
+    page.offsets = page.offsets || {};
+    if (picked === '__remove__') { delete page.slots[key]; delete page.offsets[key]; }
+    else { page.slots[key] = picked; page.offsets[key] = { x: 50, y: 50 }; await ensureURL(picked); }
+    activePageIdx = page._idx; scheduleSave(); rebuild(true);
+  }
   function slotEl(page, key, extra = '') {
     const sid = page.slots?.[key];
+    const off = (page.offsets && page.offsets[key]) || { x: 50, y: 50 };
     const el = h('div', { class: 'slot' + (sid ? '' : ' empty') + (extra ? ' ' + extra : ''), dataset: { key } });
-    if (sid) el.append(h('img', { src: getURL(sid), alt: '' }));
-    else el.append(h('div.add-hint', {}, [ico('image'), h('span', { text: 'Add image' })]));
-    el.addEventListener('click', async () => {
-      if (!el.closest('.face')?.classList.contains('live')) return;
-      const picked = await pickImage(sid);
-      if (picked === null) return;
-      page.slots = page.slots || {};
-      if (picked === '__remove__') delete page.slots[key];
-      else { page.slots[key] = picked; await ensureURL(picked); }
-      activePageIdx = page._idx; scheduleSave(); rebuild(true);
+    if (sid) {
+      const img = h('img', { src: getURL(sid), alt: '', draggable: false });
+      img.style.objectPosition = `${off.x}% ${off.y}%`;
+      el.append(img);
+    } else {
+      el.append(h('div.add-hint', {}, [ico('image'), h('span', { text: 'Add image' })]));
+    }
+    const live = () => el.closest('.face')?.classList.contains('live');
+    el.addEventListener('click', () => { if (moveMode || !live()) return; chooseImage(page, key); });
+    // move mode → drag the picture to reframe it inside the slot
+    if (sid) el.addEventListener('pointerdown', (e) => {
+      if (!moveMode || !live()) return;
+      e.preventDefault();
+      const img = el.querySelector('img'); if (!img) return;
+      const rect = el.getBoundingClientRect();
+      const startX = e.clientX, startY = e.clientY;
+      const base = page.offsets?.[key] || { x: 50, y: 50 };
+      const ox = base.x, oy = base.y;
+      const onMove = (ev) => {
+        const nx = Math.max(0, Math.min(100, ox - (ev.clientX - startX) / rect.width * 130));
+        const ny = Math.max(0, Math.min(100, oy - (ev.clientY - startY) / rect.height * 130));
+        page.offsets = page.offsets || {}; page.offsets[key] = { x: nx, y: ny };
+        img.style.objectPosition = `${nx}% ${ny}%`;
+      };
+      const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); scheduleSave(); };
+      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
     });
     return el;
   }
@@ -229,12 +256,13 @@ async function openEditor(root, id, ctx) {
   function computeMode() { return vpWidth() >= 760 ? 'spread' : 'single'; }
   function sizeBook() {
     const w = vpWidth();
-    const hBudget = (window.innerHeight || 640) - 190;
-    let ph = Math.min(Math.max(hBudget, 300), 900);
+    // bar moved to the right edge → use almost the full height, leave room on the right
+    const hBudget = (window.innerHeight || 640) - 96;
+    let ph = Math.min(Math.max(hBudget, 300), 1200);
     let pw = ph * 0.72;
     const m = computeMode();
     const bw = (m === 'spread' ? pw * 2 : pw);
-    const availW = Math.max(260, w - 28);
+    const availW = Math.max(260, w - 92);
     if (bw > availW) { const s = availW / bw; pw *= s; ph *= s; }
     pw = Math.max(60, pw); ph = Math.max(80, pw / 0.72);
     book.style.setProperty('--pw', pw.toFixed(1) + 'px');
@@ -336,6 +364,12 @@ async function openEditor(root, id, ctx) {
     p.bg = order[(order.indexOf(p.bg || 'dark') + 1) % order.length];
     scheduleSave(); rebuild(true);
   }
+  function toggleMove() {
+    moveMode = !moveMode;
+    moveBtn.classList.toggle('active', moveMode);
+    book.classList.toggle('move-mode', moveMode);
+    toast(moveMode ? 'Move mode: drag a picture to reframe it.' : 'Move mode off.');
+  }
   async function renamePortfolio() {
     const n = await promptModal({ title: 'Rename portfolio', value: portfolio.name, jp: true });
     if (n === null) return;
@@ -372,21 +406,27 @@ async function openEditor(root, id, ctx) {
   async function pickImage(currentId) {
     const folders = await getFolders();
     return new Promise((resolve) => {
-      let curFolder = folders[0]?.id || null;
+      let curFolder = '__all__';   // default: every image in Onyx Folio
       const grid = h('div.pick-grid');
       const tabs = h('div.pick-folders');
       const done = (v) => { closeModal(); resolve(v); };
       async function loadGrid() {
         grid.innerHTML = '';
-        if (!curFolder) { grid.append(h('div.rail-empty', { text: 'No folders yet.' })); return; }
-        const imgs = await getImages(curFolder);
-        if (!imgs.length) { grid.append(h('div.rail-empty', { text: 'This folder is empty.' })); return; }
+        const imgs = curFolder === '__all__' ? await getAllImages() : await getImages(curFolder);
+        imgs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        if (!imgs.length) { grid.append(h('div.rail-empty', { text: 'No images yet — add some in a folder first.' })); return; }
         imgs.forEach((im) => grid.append(h('div', { class: 'pick-cell' + (im.id === currentId ? ' sel' : ''), onclick: () => done(im.id) }, [h('img', { src: blobURL('thumb-' + im.id, im.thumb), alt: '' })])));
       }
-      folders.forEach((f) => tabs.append(h('button', { class: 'pick-folder' + (f.id === curFolder ? ' active' : ''), onclick: (e) => { curFolder = f.id; qsa('.pick-folder', tabs).forEach((c) => c.classList.remove('active')); e.currentTarget.classList.add('active'); loadGrid(); } }, [h('span.jp', { text: f.name })])));
-      openModal(h('div.modal', { style: { width: 'min(700px, 100%)' } }, [
+      const tabEls = [];
+      const mkTab = (id, label, jp) => {
+        const b = h('button', { class: 'pick-folder' + (id === curFolder ? ' active' : ''), onclick: () => { curFolder = id; tabEls.forEach((c) => c.classList.remove('active')); b.classList.add('active'); loadGrid(); } }, [h(jp ? 'span.jp' : 'span', { text: label })]);
+        tabEls.push(b); return b;
+      };
+      tabs.append(mkTab('__all__', 'All'));
+      folders.forEach((f) => tabs.append(mkTab(f.id, f.name, true)));
+      openModal(h('div.modal', { style: { width: 'min(720px, 100%)' } }, [
         h('h2.display', { text: 'Choose an image' }),
-        folders.length ? tabs : h('p.modal-sub', { text: 'Add images to a folder first.' }),
+        tabs,
         grid,
         h('div.modal-actions', {}, [
           currentId ? h('button.btn.btn-ghost', { text: 'Remove', onclick: () => done('__remove__') }) : null,

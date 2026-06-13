@@ -27,7 +27,7 @@
 .pf-new:hover .cover { border-color: var(--accent); color: var(--accent); }
 
 /* --- editor / book --- */
-.pf-editor { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--header-h) 16px 96px; overflow: hidden; }
+.pf-editor { position: absolute; inset: 0; display: grid; place-items: center; padding: calc(var(--header-h) + 6px) 82px 14px 14px; overflow: hidden; }
 .book-wrap { perspective: 2600px; }
 .book {
   position: relative;
@@ -77,6 +77,8 @@
 .editing .slot { cursor: pointer; }
 .editing .slot:hover::after { content: 'Replace'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(8,8,10,.55); color: var(--ink-0); font-size: 11px; letter-spacing: .2em; text-transform: uppercase; }
 .editing .slot.empty:hover::after { display: none; }
+.book.move-mode .face.live .slot { cursor: move; }
+.book.move-mode .editing .slot:hover::after { display: none; }
 
 .pad { padding: clamp(16px, 3.4%, 30px); }
 .txt {
@@ -95,8 +97,11 @@
 .lay-cover { flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 18px; }
 .lay-cover .cover-img { position: absolute; inset: 0; }
 .lay-cover .cover-img img { opacity: .42; }
-.lay-cover .cover-veil { position: absolute; inset: 0; background: radial-gradient(80% 60% at 50% 50%, transparent, rgba(8,8,10,.7)); }
-.lay-cover .cover-inner { position: relative; z-index: 1; padding: 8%; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.lay-cover .cover-img.empty { place-items: end center; }              /* hint sits at the bottom, clear of the title */
+.lay-cover .cover-img.empty .add-hint { margin-bottom: 12%; }
+.lay-cover .cover-veil { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(80% 60% at 50% 50%, transparent, rgba(8,8,10,.7)); }
+.lay-cover .cover-inner { position: relative; z-index: 1; padding: 8%; display: flex; flex-direction: column; gap: 14px; align-items: center; pointer-events: none; }
+.lay-cover .cover-inner .txt { pointer-events: auto; }                /* title stays editable; clicks elsewhere set the cover image */
 .lay-cover .txt-title { font-size: clamp(26px, 7cqw, 56px); }
 
 /* layout: full bleed */
@@ -122,16 +127,17 @@
 
 /* --- floating editor bar --- */
 .pf-bar {
-  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 6px; z-index: 40;
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 4px; z-index: 40;
   background: #131318;
-  border: 1px solid var(--line); border-radius: 40px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 30px; padding: 10px 7px;
   box-shadow: var(--shadow-lift);
 }
-.pf-bar .sepv { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
-.pf-bar .page-ind { font-size: 11px; letter-spacing: .12em; color: var(--ink-1); min-width: 64px; text-align: center; }
+.pf-bar .sepv { width: 22px; height: 1px; background: var(--line); margin: 4px 0; }
+.pf-bar .page-ind { font-size: 10px; letter-spacing: .03em; color: var(--ink-1); text-align: center; padding: 2px 0; }
 .pf-bar .icon-btn { width: 38px; height: 38px; border: none; background: transparent; }
 .pf-bar .icon-btn:hover { background: var(--bg-3); }
+.pf-bar .icon-btn.active { background: var(--accent); color: var(--bg-0); }
 .pf-bar .icon-btn:disabled { opacity: .3; pointer-events: none; }
 
 /* layout / add menus */
@@ -164,5 +170,7 @@
 .turn-zone::after { content: ''; position: absolute; top: 50%; width: 20px; height: 20px; }
 
 @media (max-width: 760px) {
-  .pf-bar { bottom: 12px; }
+  .pf-editor { padding: calc(var(--header-h) + 4px) 64px 10px 10px; }
+  .pf-bar { right: 8px; padding: 8px 6px; gap: 2px; }
+  .pf-bar .icon-btn { width: 34px; height: 34px; }
 }

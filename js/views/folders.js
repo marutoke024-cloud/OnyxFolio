@@ -11,12 +11,19 @@ export async function mount(root, params, ctx) {
   // Seed a large, varied set so the field reads like a weird-folders wall — many
   // distinct folders filling the screen, not a handful repeating row after row.
   // Also migrate the original 8-folder default on empty installs.
+  // Re-seed bumps this. We only auto-replace folders that are still an untouched
+  // default set (legacy 8 or a prior design seed) with no images — never the
+  // user's own renamed folders or anything holding pictures.
+  const SEED_V = 2;
   let folders = await getFolders();
   const LEGACY = ['Archive', 'Lookbook', 'Studio', 'Inspiration', 'Editorial', 'Travel', 'Mono', 'Material'];
-  const isLegacy = folders.length === LEGACY.length && folders.every((f, i) => f.name === LEGACY[i]);
-  if (!folders.length || (isLegacy && (await getAllImages()).length === 0)) {
+  const designNames = new Set(FOLDER_DESIGNS.map((d) => d.name));
+  const untouched = folders.length > 0 && folders.every((f) => designNames.has(f.name) || LEGACY.includes(f.name));
+  const storedV = +(localStorage.getItem('onyx-seed-v') || 0);
+  if (!folders.length || (untouched && storedV < SEED_V && (await getAllImages()).length === 0)) {
     for (const f of folders) await deleteFolder(f.id);
     for (const d of seedDesigns(72)) await addFolder(d.name, d.file);
+    localStorage.setItem('onyx-seed-v', String(SEED_V));
     folders = await getFolders();
   }
 

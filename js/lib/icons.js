@@ -20,6 +20,7 @@ export const icons = {
   download:w('<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>'),
   text:    w('<path d="M4 7V5h16v2M9 19h6M12 5v14"/>'),
   layout:  w('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>'),
+  move:    w('<path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/>'),
 };
 
 export const ico = (name, cls = '') => {

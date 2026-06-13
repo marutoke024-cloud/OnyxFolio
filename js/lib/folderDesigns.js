@@ -30,8 +30,13 @@ export const FOLDER_DESIGNS = NAMES.map((name, i) => ({
 }));
 
 /** Interleave the three themes so a fresh grid shows a varied mix. */
+export const SEED_EXCLUDE = [
+  'Band Tee', 'Dried Wild Mushrooms', 'Farm-Fresh Eggs', 'Dried Kitchen Herbs',
+  'Tailoring Tools', 'Dome-Covered Mini', 'Antique Box', 'Knit Beanie',
+];
+
 export function seedDesigns(count = 30) {
-  const exclude = new Set(['Band Tee', 'Dried Wild Mushrooms']);
+  const exclude = new Set(SEED_EXCLUDE);
   const out = [];
   for (let k = 0; out.length < count && k < 24; k++) {
     for (const base of [0, 24, 48]) {

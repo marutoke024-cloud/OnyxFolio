@@ -1,10 +1,13 @@
-// Album view — an image cloud: works lie freely in space, overlapping and
-// drifting irregularly. Selecting a tag floats matching works forward.
-import { h, isTouch, toast, confirmModal, qsa, rand, clamp } from '../lib/dom.js';
+// Album view — an image cloud: works lie freely in the centre, kept upright and
+// packed with minimal overlap (spreading outward as the count grows), drifting
+// gently but never past the frame. A theme floats its matches forward.
+import { h, isTouch, toast, confirmModal, qsa, rand } from '../lib/dom.js';
 import { ico, icons } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import { getFolder, getImages, addImage, updateImage, deleteImage, blobURL, revokeURL } from '../storage/db.js';
 import { fileToImageRecord } from '../lib/image.js';
+
+const BASE_W = 320; // element width; on-screen size is BASE_W * scale
 
 export async function mount(root, params, ctx) {
   const folderId = params.folderId;
@@ -30,7 +33,6 @@ export async function mount(root, params, ctx) {
   });
   root.append(layout, topbar, progress, fileInput);
 
-  // --- cloud animation state ---
   let running = true, raf = 0, last = 0, t = 0, lastW = 0, lastH = 0;
 
   function emptyState() {
@@ -54,64 +56,82 @@ export async function mount(root, params, ctx) {
     lastW = W; lastH = H;
     images.forEach((im, i) => {
       const aspect = (im.w && im.h) ? im.h / im.w : 1.3;
-      const w = clamp(rand(0.2, 0.3) * Math.min(W, 1250), 190, 440);
-      const ih = w * aspect;
       const el = h('div.cloud-item', { dataset: { index: i } }, [
         h('img', { src: blobURL('thumb-' + im.id, im.thumb), alt: im.name || '', draggable: false }),
       ]);
-      el.style.width = w + 'px';
+      el.style.width = BASE_W + 'px';
       cloud.append(el);
-      const depth = rand(0.8, 1.16);
       const s = {
-        el, w, ih,
-        bx: (0.5 + rand(-0.24, 0.24)) * W, by: (0.5 + rand(-0.3, 0.3)) * H,
-        rot: rand(-13, 13), depth, z: Math.round(depth * 100),
-        amp: rand(9, 24), spd: rand(0.1, 0.4), phx: rand(0, 6.28), phy: rand(0, 6.28), hover: false,
+        el, aspect, w0: BASE_W, ih0: BASE_W * aspect, hover: false,
+        amp: rand(5, 11), spd: rand(0.12, 0.34), phx: rand(0, 6.28), phy: rand(0, 6.28),
+        cx: W / 2, cy: H / 2, cs: 0.12, copacity: 0,
+        tx: W / 2, ty: H / 2, ts: 0.3, topacity: 1, tz: 2,
       };
-      s.tx = s.bx; s.ty = s.by; s.ts = depth; s.topacity = 1; s.tz = s.z;
-      s.cx = s.bx; s.cy = s.by; s.cs = depth; s.copacity = 1;
       el.addEventListener('pointerenter', () => { s.hover = true; el.classList.add('lift'); });
       el.addEventListener('pointerleave', () => { s.hover = false; el.classList.remove('lift'); });
-      el.addEventListener('click', () => openLightbox(i));
+      el.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(i); });
       items.push(s);
     });
     applyFilter();
     startLoop();
   }
 
+  // centred packed grid: big when few, smaller and spread outward when many
+  function placeGrid(list, W, H, region) {
+    const N = list.length; if (!N) return;
+    const cols = Math.max(1, Math.round(Math.sqrt(N * (W / H))));
+    const rows = Math.ceil(N / cols);
+    const cellW = (W * 0.96 * region) / cols;
+    const cellH = (H * 0.94 * region) / rows;
+    const gridTop = (H - rows * cellH) / 2;
+    list.forEach((s, i) => {
+      const row = Math.floor(i / cols);
+      const inRow = Math.min(cols, N - row * cols);
+      const rowLeft = (W - inRow * cellW) / 2;
+      const col = i % cols;
+      s.tx = rowLeft + col * cellW + cellW / 2 + (Math.random() - 0.5) * cellW * 0.08;
+      s.ty = gridTop + row * cellH + cellH / 2 + (Math.random() - 0.5) * cellH * 0.08;
+      s.ts = Math.min((cellW * 0.94) / s.w0, (cellH * 0.94) / s.ih0);
+    });
+  }
+
   function applyFilter() {
     const W = cloud.clientWidth || 800, H = cloud.clientHeight || 600;
-    items.forEach((s, i) => {
-      const im = images[i];
-      if (!activeTag) {
-        s.tx = s.bx; s.ty = s.by; s.ts = s.depth; s.topacity = 1; s.tz = s.z;
-        s.el.classList.remove('recede');
-      } else if ((im.tags || []).includes(activeTag)) {
-        s.tx = (0.3 + Math.random() * 0.4) * W;
-        s.ty = (0.22 + Math.random() * 0.56) * H;
-        s.ts = s.depth * 1.32; s.topacity = 1; s.tz = 300 + i;
-        s.el.classList.remove('recede');
-      } else {
-        s.tx = s.bx; s.ty = s.by; s.ts = s.depth * 0.66; s.topacity = 0.12; s.tz = s.z;
-        s.el.classList.add('recede');
-      }
+    if (!activeTag) {
+      items.forEach((s) => { s.topacity = 1; s.tz = 2; s.el.classList.remove('recede'); });
+      placeGrid(items, W, H, 1);
+      return;
+    }
+    const match = [], other = [];
+    items.forEach((s, i) => ((images[i].tags || []).includes(activeTag) ? match : other).push(s));
+    placeGrid(match, W, H, 0.9);
+    match.forEach((s) => { s.topacity = 1; s.tz = 300; s.el.classList.remove('recede'); });
+    other.forEach((s, k) => {
+      const ang = (k / Math.max(1, other.length)) * Math.PI * 2;
+      s.tx = W / 2 + Math.cos(ang) * W * 0.46;
+      s.ty = H / 2 + Math.sin(ang) * H * 0.44;
+      s.ts = 0.2; s.topacity = 0.1; s.tz = 1; s.el.classList.add('recede');
     });
   }
 
   function loop(now) {
     if (!running || document.hidden) { raf = 0; return; }
     const dt = Math.min(50, now - last); last = now; t += dt * 0.001;
+    const W = cloud.clientWidth || 800, H = cloud.clientHeight || 600;
     for (const s of items) {
       s.cx += (s.tx - s.cx) * 0.06;
       s.cy += (s.ty - s.cy) * 0.06;
-      s.cs += (s.ts - s.cs) * 0.08;
+      s.cs += (s.ts - s.cs) * 0.07;
       s.copacity += (s.topacity - s.copacity) * 0.08;
       const dx = s.amp * Math.sin(t * s.spd + s.phx);
-      const dy = s.amp * 0.8 * Math.sin(t * s.spd * 0.85 + s.phy);
-      const wob = 2.2 * Math.sin(t * s.spd * 0.5 + s.phy);
-      let scale = s.cs, z = s.tz, rot = s.rot + wob;
-      if (s.hover) { scale = s.cs * 1.12; z = 9999; rot = s.rot * 0.25; }
-      s.el.style.transform = `translate3d(${(s.cx - s.w / 2 + dx).toFixed(1)}px, ${(s.cy - s.ih / 2 + dy).toFixed(1)}px, 0) rotate(${rot.toFixed(2)}deg) scale(${scale.toFixed(3)})`;
+      const dy = s.amp * 0.85 * Math.sin(t * s.spd * 0.9 + s.phy);
+      let scale = s.cs, z = s.tz;
+      if (s.hover) { scale = s.cs * 1.14; z = 9999; }
+      const hw = s.w0 * scale / 2, hh = s.ih0 * scale / 2;
+      let x = s.cx + dx, y = s.cy + dy;
+      x = Math.max(hw + 2, Math.min(W - hw - 2, x));   // never past the frame
+      y = Math.max(hh + 2, Math.min(H - hh - 2, y));
+      s.el.style.transform = `translate3d(${(x - s.w0 / 2).toFixed(1)}px, ${(y - s.ih0 / 2).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
       s.el.style.opacity = s.copacity.toFixed(3);
       s.el.style.zIndex = String(z);
     }
@@ -119,6 +139,9 @@ export async function mount(root, params, ctx) {
   }
   function startLoop() { if (running && !document.hidden && !raf && items.length) { last = performance.now(); raf = requestAnimationFrame(loop); } }
   function stopLoop() { cancelAnimationFrame(raf); raf = 0; }
+
+  // click an empty patch → revert (deselect the active theme)
+  cloud.addEventListener('click', (e) => { if (e.target === cloud && activeTag) setTag(null); });
 
   // --- tag rail ---
   function allTags() {
@@ -140,11 +163,7 @@ export async function mount(root, params, ctx) {
     ])));
   }
   function setTag(tg) { activeTag = (tg === activeTag) ? null : tg; renderRail(); applyFilter(); }
-  function onRandom() { activeTag = null; reshuffle(); renderRail(); applyFilter(); }
-  function reshuffle() {
-    const W = cloud.clientWidth || 800, H = cloud.clientHeight || 600;
-    items.forEach((s) => { s.bx = (0.5 + rand(-0.24, 0.24)) * W; s.by = (0.5 + rand(-0.3, 0.3)) * H; s.rot = rand(-13, 13); });
-  }
+  function onRandom() { activeTag = null; renderRail(); applyFilter(); }
 
   async function reload() { images = await getImages(folderId); buildCloud(); renderRail(); }
 
@@ -184,12 +203,16 @@ export async function mount(root, params, ctx) {
   };
   lbTagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') lbAddTag(); });
 
+  const lbStage = h('div.lb-stage', {}, [
+    h('button.icon-btn.lb-nav.prev', { onclick: () => step(-1) }, [ico('back')]),
+    lbImg,
+    h('button.icon-btn.lb-nav.next', { onclick: () => step(1), style: { transform: 'translateY(-50%) scaleX(-1)' } }, [ico('back')]),
+  ]);
+  // click the empty backdrop → close
+  lbStage.addEventListener('click', (e) => { if (e.target === lbStage) closeLightbox(); });
+
   const lightbox = h('div.lightbox', {}, [
-    h('div.lb-stage', {}, [
-      h('button.icon-btn.lb-nav.prev', { onclick: () => step(-1) }, [ico('back')]),
-      lbImg,
-      h('button.icon-btn.lb-nav.next', { onclick: () => step(1), style: { transform: 'translateY(-50%) scaleX(-1)' } }, [ico('back')]),
-    ]),
+    lbStage,
     h('div.lb-side', {}, [
       lbName,
       h('div', {}, [h('div.lb-field-label', { text: 'Tags' }), lbTags,
@@ -258,10 +281,9 @@ export async function mount(root, params, ctx) {
   });
   ro.observe(cloud);
 
-  // debug/verification handle (harmless)
   function paintAll() {
     for (const s of items) {
-      s.el.style.transform = `translate3d(${(s.cx - s.w / 2).toFixed(1)}px, ${(s.cy - s.ih / 2).toFixed(1)}px, 0) rotate(${s.rot.toFixed(2)}deg) scale(${s.cs.toFixed(3)})`;
+      s.el.style.transform = `translate3d(${(s.cx - s.w0 / 2).toFixed(1)}px, ${(s.cy - s.ih0 / 2).toFixed(1)}px, 0) scale(${s.cs.toFixed(3)})`;
       s.el.style.opacity = s.copacity.toFixed(3); s.el.style.zIndex = String(s.tz);
     }
   }
