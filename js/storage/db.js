@@ -41,11 +41,11 @@ export async function getFolders() {
   const all = await done(s.getAll());
   return all.sort(byOrder);
 }
-export async function addFolder(name) {
+export async function addFolder(name, icon = null) {
   const folders = await getFolders();
   const folder = {
     id: uid(), name: name || 'Untitled', order: folders.length,
-    createdAt: Date.now(), accent: null,
+    createdAt: Date.now(), accent: null, icon,
   };
   const s = await tx('folders', 'readwrite');
   await done(s.put(folder));
