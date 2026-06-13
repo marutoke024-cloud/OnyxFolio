@@ -178,8 +178,8 @@ input.field::placeholder, textarea.field::placeholder { color: var(--ink-3); }
   .tb-left { gap: 8px; min-width: 0; }
   .topbar .crumbs { font-size: 9.5px; letter-spacing: .04em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .topbar .actions { gap: 5px; }
-  .topbar .actions .btn-with-ico span { display: none; }
-  .topbar .actions .btn-with-ico { padding: 0; width: 40px; height: 40px; justify-content: center; border-radius: 50%; }
+  .topbar .actions .btn-with-ico { font-size: 0; padding: 0; width: 40px; height: 40px; justify-content: center; border-radius: 50%; }
+  .topbar .actions .btn-with-ico .ico svg { width: 18px; height: 18px; }
 }
 
 /* --- Modal / overlay --- */
