@@ -171,6 +171,17 @@ input.field::placeholder, textarea.field::placeholder { color: var(--ink-3); }
 .topbar .crumbs .cur { color: var(--ink-0); }
 .topbar .actions { display: flex; align-items: center; gap: 10px; }
 
+/* narrow phones: keep the header from colliding (Add → icon only, compact crumbs) */
+@media (max-width: 560px) {
+  .topbar { padding: 0 10px; }
+  .topbar .brand { font-size: 14px; white-space: nowrap; }
+  .tb-left { gap: 8px; min-width: 0; }
+  .topbar .crumbs { font-size: 9.5px; letter-spacing: .04em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .actions { gap: 5px; }
+  .topbar .actions .btn-with-ico span { display: none; }
+  .topbar .actions .btn-with-ico { padding: 0; width: 40px; height: 40px; justify-content: center; border-radius: 50%; }
+}
+
 /* --- Modal / overlay --- */
 .overlay {
   position: fixed; inset: 0; z-index: 100;

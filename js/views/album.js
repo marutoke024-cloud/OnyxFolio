@@ -76,41 +76,44 @@ export async function mount(root, params, ctx) {
     startLoop();
   }
 
-  // centred packed grid: big when few, smaller and spread outward when many
-  function placeGrid(list, W, H, region) {
+  // phyllotaxis (sunflower) spiral from the centre → radial, large, edges overlapping,
+  // spreading outward as the count grows. Fit so the whole spiral stays in frame.
+  const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+  function placeRadial(list, W, H) {
     const N = list.length; if (!N) return;
-    const cols = Math.max(1, Math.round(Math.sqrt(N * (W / H))));
-    const rows = Math.ceil(N / cols);
-    const cellW = (W * 0.96 * region) / cols;
-    const cellH = (H * 0.94 * region) / rows;
-    const gridTop = (H - rows * cellH) / 2;
+    const cx0 = W / 2, cy0 = H / 2, minWH = Math.min(W, H);
+    let sizePx = minWH * 0.36;       // big base size
+    let SP = sizePx * 0.5;           // spacing < size → edges overlap
+    const maxR = SP * Math.sqrt(Math.max(0, N - 0.6));
+    const need = maxR + sizePx * 0.5, avail = minWH * 0.5;
+    if (need > avail) { const k = avail / need; sizePx *= k; SP *= k; }
+    const ex = Math.min(1.5, W / minWH);   // gentle horizontal spread on wide frames
     list.forEach((s, i) => {
-      const row = Math.floor(i / cols);
-      const inRow = Math.min(cols, N - row * cols);
-      const rowLeft = (W - inRow * cellW) / 2;
-      const col = i % cols;
-      s.tx = rowLeft + col * cellW + cellW / 2 + (Math.random() - 0.5) * cellW * 0.08;
-      s.ty = gridTop + row * cellH + cellH / 2 + (Math.random() - 0.5) * cellH * 0.08;
-      s.ts = Math.min((cellW * 0.94) / s.w0, (cellH * 0.94) / s.ih0);
+      const ang = i * GOLDEN;
+      const r = i === 0 ? 0 : SP * Math.sqrt(i + 0.2);
+      s.tx = cx0 + r * Math.cos(ang) * ex;
+      s.ty = cy0 + r * Math.sin(ang);
+      s.ts = sizePx / s.w0;
+      s.tz = 60 + (N - i);           // centre items sit on top
     });
   }
 
   function applyFilter() {
     const W = cloud.clientWidth || 800, H = cloud.clientHeight || 600;
     if (!activeTag) {
-      items.forEach((s) => { s.topacity = 1; s.tz = 2; s.el.classList.remove('recede'); });
-      placeGrid(items, W, H, 1);
+      items.forEach((s) => { s.topacity = 1; s.el.classList.remove('recede'); });
+      placeRadial(items, W, H);
       return;
     }
     const match = [], other = [];
     items.forEach((s, i) => ((images[i].tags || []).includes(activeTag) ? match : other).push(s));
-    placeGrid(match, W, H, 0.9);
-    match.forEach((s) => { s.topacity = 1; s.tz = 300; s.el.classList.remove('recede'); });
+    placeRadial(match, W, H);
+    match.forEach((s) => { s.topacity = 1; s.el.classList.remove('recede'); s.tz += 200; });
     other.forEach((s, k) => {
       const ang = (k / Math.max(1, other.length)) * Math.PI * 2;
       s.tx = W / 2 + Math.cos(ang) * W * 0.46;
       s.ty = H / 2 + Math.sin(ang) * H * 0.44;
-      s.ts = 0.2; s.topacity = 0.1; s.tz = 1; s.el.classList.add('recede');
+      s.ts = 0.18; s.topacity = 0.1; s.tz = 1; s.el.classList.add('recede');
     });
   }
 
