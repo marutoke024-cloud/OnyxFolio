@@ -2,16 +2,22 @@
 import { h, isTouch, toast, promptModal, confirmModal, openModal, closeModal } from '../lib/dom.js';
 import { ico } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
-import { getFolders, addFolder, updateFolder, deleteFolder } from '../storage/db.js';
+import { getFolders, addFolder, updateFolder, deleteFolder, getAllImages } from '../storage/db.js';
 import { FOLDER_DESIGNS, seedDesigns } from '../lib/folderDesigns.js';
 
 export async function mount(root, params, ctx) {
   if (isTouch) root.classList.add('is-touch');
 
-  // First run → seed a varied set of designed folders so the grid is alive.
+  // Seed a large, varied set so the field reads like a weird-folders wall — many
+  // distinct folders filling the screen, not a handful repeating row after row.
+  // Also migrate the original 8-folder default on empty installs.
   let folders = await getFolders();
-  if (!folders.length) {
-    for (const d of seedDesigns(30)) await addFolder(d.name, d.file);
+  const LEGACY = ['Archive', 'Lookbook', 'Studio', 'Inspiration', 'Editorial', 'Travel', 'Mono', 'Material'];
+  const isLegacy = folders.length === LEGACY.length && folders.every((f, i) => f.name === LEGACY[i]);
+  if (!folders.length || (isLegacy && (await getAllImages()).length === 0)) {
+    for (const f of folders) await deleteFolder(f.id);
+    for (const d of seedDesigns(72)) await addFolder(d.name, d.file);
+    folders = await getFolders();
   }
 
   const plane = h('div.folders-plane');

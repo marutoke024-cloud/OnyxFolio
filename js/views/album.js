@@ -54,7 +54,7 @@ export async function mount(root, params, ctx) {
     lastW = W; lastH = H;
     images.forEach((im, i) => {
       const aspect = (im.w && im.h) ? im.h / im.w : 1.3;
-      const w = clamp(rand(0.13, 0.2) * Math.min(W, 1100), 130, 300);
+      const w = clamp(rand(0.2, 0.3) * Math.min(W, 1250), 190, 440);
       const ih = w * aspect;
       const el = h('div.cloud-item', { dataset: { index: i } }, [
         h('img', { src: blobURL('thumb-' + im.id, im.thumb), alt: im.name || '', draggable: false }),
@@ -64,7 +64,7 @@ export async function mount(root, params, ctx) {
       const depth = rand(0.8, 1.16);
       const s = {
         el, w, ih,
-        bx: rand(0.15, 0.85) * W, by: rand(0.16, 0.84) * H,
+        bx: (0.5 + rand(-0.24, 0.24)) * W, by: (0.5 + rand(-0.3, 0.3)) * H,
         rot: rand(-13, 13), depth, z: Math.round(depth * 100),
         amp: rand(9, 24), spd: rand(0.1, 0.4), phx: rand(0, 6.28), phy: rand(0, 6.28), hover: false,
       };
@@ -143,7 +143,7 @@ export async function mount(root, params, ctx) {
   function onRandom() { activeTag = null; reshuffle(); renderRail(); applyFilter(); }
   function reshuffle() {
     const W = cloud.clientWidth || 800, H = cloud.clientHeight || 600;
-    items.forEach((s) => { s.bx = rand(0.15, 0.85) * W; s.by = rand(0.16, 0.84) * H; s.rot = rand(-13, 13); });
+    items.forEach((s) => { s.bx = (0.5 + rand(-0.24, 0.24)) * W; s.by = (0.5 + rand(-0.3, 0.3)) * H; s.rot = rand(-13, 13); });
   }
 
   async function reload() { images = await getImages(folderId); buildCloud(); renderRail(); }
