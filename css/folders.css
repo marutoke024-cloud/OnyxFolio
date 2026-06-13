@@ -38,15 +38,12 @@
 .folder-thumb {
   width: 100%; aspect-ratio: 128 / 96;
   display: grid; place-items: center;
-  transition: transform .45s var(--ease-out);
+  transition: transform .45s var(--ease-out), filter .45s var(--ease-out);
+  /* icons are background-free PNGs → the shadow follows the folder shape so it floats */
+  filter: drop-shadow(0 9px 12px rgba(0,0,0,0.55));
 }
-.folder-thumb img {
-  width: 100%; height: 100%; object-fit: contain; display: block;
-  /* fade the rectangular crop edge into the dark so no seam shows */
-  -webkit-mask-image: radial-gradient(ellipse 92% 92% at 50% 46%, #000 72%, transparent 100%);
-          mask-image: radial-gradient(ellipse 92% 92% at 50% 46%, #000 72%, transparent 100%);
-}
-.folder:hover .folder-thumb { transform: translateY(-7px) scale(1.05); }
+.folder-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.folder:hover .folder-thumb { transform: translateY(-7px) scale(1.05); filter: drop-shadow(0 16px 20px rgba(0,0,0,0.7)); }
 
 .folder-name {
   font-size: 10.5px; letter-spacing: .15em; text-transform: uppercase;

@@ -3,8 +3,6 @@
 import { h, qsa } from '../lib/dom.js';
 import { Pointillism } from '../lib/pointillism.js';
 
-const RETURN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10 4 15l5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>';
-
 export async function mount(root, params, ctx) {
   const canvas = h('canvas.pointfield');
   const grain = h('div.landing-grain');
@@ -16,10 +14,6 @@ export async function mount(root, params, ctx) {
     h('h1.landing-title.reveal', { style: { transitionDelay: '.15s' }, text: 'Onyx Folio' }),
     h('p.landing-sub.reveal', { style: { transitionDelay: '.32s' }, text: 'A gallery you can compose.' }),
     enterBtn,
-    h('div.enter-hint.reveal', { style: { transitionDelay: '.64s' } }, [
-      h('span', { html: RETURN }),
-      h('span', { text: 'Best viewed in the dark' }),
-    ]),
   ]);
 
   root.append(canvas, grain, vignette, core);

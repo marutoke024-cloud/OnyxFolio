@@ -1,6 +1,6 @@
 // Folders view — a packed, slowly looping grid of designed folder icons.
-import { h, isTouch, toast, promptModal, confirmModal } from '../lib/dom.js';
-import { ico, icons } from '../lib/icons.js';
+import { h, isTouch, toast, promptModal, confirmModal, openModal, closeModal } from '../lib/dom.js';
+import { ico } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import { getFolders, addFolder, updateFolder, deleteFolder } from '../storage/db.js';
 import { FOLDER_DESIGNS, seedDesigns } from '../lib/folderDesigns.js';
@@ -107,36 +107,42 @@ export async function mount(root, params, ctx) {
     longTimer = setTimeout(() => {
       if (!moved) {
         const fEl = e.target.closest('.folder');
-        if (fEl) { dragging = false; stage.classList.remove('dragging'); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); openCtxMenu(e.clientX, e.clientY, fEl.dataset.id); }
+        if (fEl) { dragging = false; stage.classList.remove('dragging'); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); openFolderEdit(fEl.dataset.id); }
       }
     }, 480);
   });
   stage.addEventListener('wheel', (e) => { e.preventDefault(); momentum = 0; y -= e.deltaY * 0.6; }, { passive: false });
   stage.addEventListener('contextmenu', (e) => {
     const fEl = e.target.closest('.folder');
-    if (fEl) { e.preventDefault(); openCtxMenu(e.clientX, e.clientY, fEl.dataset.id); }
+    if (fEl) { e.preventDefault(); openFolderEdit(fEl.dataset.id); }
   });
 
-  // --- context menu ---
-  let curMenu = null;
-  const ctxItem = (label, svg, fn, danger) =>
-    h('div.ctx-item' + (danger ? '.danger' : ''), { onclick: () => { closeCtxMenu(); fn(); } }, [h('span', { html: svg }), label]);
-  function openCtxMenu(x, y0, id) {
-    closeCtxMenu();
-    const menu = h('div.ctx-menu', {}, [
-      ctxItem('Open', icons.folder, () => ctx.nav('/album/' + id)),
-      ctxItem('Rename', icons.edit, () => onRename(id)),
-      ctxItem('Delete', icons.trash, () => onDelete(id), true),
+  // --- folder edit (long-press / right-click) → rename, with delete ---
+  function openFolderEdit(id) {
+    const f = folders.find((x) => x.id === id);
+    if (!f) return;
+    const input = h('input.field.jp', { value: f.name || '', placeholder: 'Untitled', spellcheck: false });
+    const save = () => { closeModal(); updateFolder(id, { name: input.value.trim() || 'Untitled' }).then(render); };
+    const del = async () => {
+      closeModal();
+      const ok = await confirmModal({ title: 'Delete folder?', message: `“${f.name || 'This folder'}” and its images will be removed from this device.`, confirmText: 'Delete', danger: true });
+      if (ok) { await deleteFolder(id); toast('Folder deleted.'); await render(); }
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+    const modal = h('div.modal', {}, [
+      h('h2.display', { text: 'Rename folder' }),
+      h('div.row', {}, [h('label', { text: 'Name' }), input]),
+      h('div.modal-actions', { style: { justifyContent: 'space-between' } }, [
+        h('button.btn.btn-danger.btn-with-ico', { onclick: del }, [ico('trash'), h('span', { text: 'Delete' })]),
+        h('div', { style: { display: 'flex', gap: '10px' } }, [
+          h('button.btn.btn-ghost', { text: 'Cancel', onclick: () => closeModal() }),
+          h('button.btn.btn-accent', { text: 'Save', onclick: save }),
+        ]),
+      ]),
     ]);
-    document.body.append(menu);
-    menu.style.left = Math.min(x, innerWidth - 188) + 'px';
-    menu.style.top = Math.min(y0, innerHeight - 150) + 'px';
-    requestAnimationFrame(() => menu.classList.add('in'));
-    curMenu = menu;
-    setTimeout(() => document.addEventListener('pointerdown', closeOnOut), 0);
+    openModal(modal);
+    setTimeout(() => { input.focus(); input.select(); }, 120);
   }
-  function closeOnOut(e) { if (curMenu && !curMenu.contains(e.target)) closeCtxMenu(); }
-  function closeCtxMenu() { if (curMenu) { curMenu.remove(); curMenu = null; document.removeEventListener('pointerdown', closeOnOut); } }
 
   // --- actions ---
   async function onNew() {
@@ -148,22 +154,6 @@ export async function mount(root, params, ctx) {
     toast('Folder created.');
     await render();
   }
-  async function onRename(id) {
-    const f = folders.find((x) => x.id === id);
-    const name = await promptModal({ title: 'Rename folder', label: 'Name', value: f?.name || '', jp: true });
-    if (name === null) return;
-    await updateFolder(id, { name: name || 'Untitled' });
-    await render();
-  }
-  async function onDelete(id) {
-    const f = folders.find((x) => x.id === id);
-    const ok = await confirmModal({ title: 'Delete folder?', message: `“${f?.name || 'This folder'}” and its images will be removed from this device.`, confirmText: 'Delete', danger: true });
-    if (!ok) return;
-    await deleteFolder(id);
-    toast('Folder deleted.');
-    await render();
-  }
-
   async function render() {
     folders = await getFolders();
     lastData = folders;
@@ -191,7 +181,6 @@ export async function mount(root, params, ctx) {
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      closeCtxMenu();
     },
   };
 }

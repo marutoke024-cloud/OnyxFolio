@@ -97,7 +97,6 @@ export class Pointillism {
     const step = this.step;
     const ds = Math.max(1.2, step * 0.5);
     this.dotSize = ds;
-    const maxR = Math.min(bw, bh) * 0.95;
 
     // static dots are baked into this offscreen base
     const base = document.createElement('canvas');
@@ -119,9 +118,10 @@ export class Pointillism {
         b = gray + (b - gray) * this.sat;
 
         const px = bx + x, py = by + y;
-        const dist = Math.hypot(px - cx, py - cy);
-        const fall = Math.max(0, 1 - dist / maxR);
-        const falloff = Math.min(1, fall * 1.5);   // plateau in the centre, fade only at the rim
+        const nx = (px - cx) / (bw * 0.5), ny = (py - cy) / (bh * 0.5);
+        const rr = Math.hypot(nx, ny);             // 0 centre → ~1 at the box edge
+        const e = Math.max(0, Math.min(1, (rr - 0.55) / (1.06 - 0.55)));
+        const falloff = 1 - e * e * (3 - 2 * e);   // smoothstep: full centre, faded to black by the edge
         if (falloff <= 0.02) continue;
 
         const baseA = Math.min(0.96, Math.pow(lum, 0.58)) * falloff * this.dim;  // lift midtones
