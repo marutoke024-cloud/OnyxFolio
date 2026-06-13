@@ -11,9 +11,9 @@
   position: absolute; top: 0; left: 0; right: 0; bottom: 0;
   overflow: hidden;
   cursor: grab;
-  touch-action: pan-y;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 8%, #000 93%, transparent 100%);
-          mask-image: linear-gradient(to bottom, transparent 0, #000 8%, #000 93%, transparent 100%);
+  touch-action: none;                 /* we drive the scroll ourselves → reliable on touch */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 93%, transparent 100%);
+          mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 93%, transparent 100%);
 }
 .folders-stage.dragging { cursor: grabbing; }
 
@@ -23,13 +23,22 @@
 .folders-block {
   --rg: clamp(14px, 2.2vh, 28px);
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(clamp(116px, 12vw, 152px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(clamp(118px, 11vw, 168px), 1fr));
   gap: var(--rg) clamp(8px, 1vw, 18px);
-  padding: calc(var(--header-h) + 10px) clamp(14px, 3vw, 48px) var(--rg);
+  /* no per-block header offset → every block is identical, so the loop tiles seamlessly
+     (the header zone is faded by the stage mask instead) */
+  padding: 0 clamp(14px, 3vw, 48px) var(--rg);
   align-content: start;
 }
-/* only the first block keeps the header offset; clones butt up seamlessly */
-.folders-block ~ .folders-block { padding-top: 0; }
+/* phone portrait → exactly three columns */
+@media (max-width: 600px) {
+  .folders-block {
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(12px, 2.4vw, 20px) clamp(7px, 1.6vw, 12px);
+    padding: 0 clamp(10px, 3vw, 18px) var(--rg);
+  }
+  .folder-name { font-size: 9.5px; letter-spacing: .1em; }
+}
 
 .folder {
   display: flex; flex-direction: column; align-items: center; gap: 9px;
@@ -42,7 +51,7 @@
   /* icons are background-free PNGs → the shadow follows the folder shape so it floats */
   filter: drop-shadow(0 9px 12px rgba(0,0,0,0.55));
 }
-.folder-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.folder-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; filter: contrast(1.06) saturate(1.05); }
 .folder:hover .folder-thumb { transform: translateY(-7px) scale(1.05); filter: drop-shadow(0 16px 20px rgba(0,0,0,0.7)); }
 
 .folder-name {

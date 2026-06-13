@@ -42,11 +42,29 @@ export async function mount(root, params, ctx) {
   }
 
   let lastData = [];
+  const renderBlock = (list) => h('div.folders-block', {}, list.map((f, i) => folderCard(f, i)));
+  const colsOf = (block) => getComputedStyle(block).gridTemplateColumns.split(' ').filter(Boolean).length;
+  // repeat from the start so the final row is always full → no right-side blanks, seamless loop
+  function padRows(arr, cols) {
+    if (cols <= 0 || arr.length % cols === 0) return arr;
+    const out = arr.slice();
+    const need = cols - (arr.length % cols);
+    for (let i = 0; i < need; i++) out.push(arr[i % arr.length]);
+    return out;
+  }
+
   function buildPlane(data) {
     stopLoop();
     plane.innerHTML = '';
-    const master = h('div.folders-block', {}, data.map((f, i) => folderCard(f, i)));
+    let master = renderBlock(data);
     plane.append(master);
+    // pad to a whole number of columns now that the grid has laid out
+    const padded = padRows(data, colsOf(master));
+    if (padded.length !== data.length) {
+      master.remove();
+      master = renderBlock(padded);
+      plane.append(master);
+    }
     // offsetHeight forces a synchronous layout, so measure right away — no rAF,
     // which would be starved while the tab is hidden and never start the drift.
     const stageH = stage.clientHeight || window.innerHeight || 800;
