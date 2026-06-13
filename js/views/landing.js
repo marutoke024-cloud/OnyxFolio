@@ -1,56 +1,35 @@
-// Landing view — atmospheric entry. Enter (button or ↵ key) → folders.
+// Landing view — a dim pointillist painting behind a quiet title.
+// Enter (pill or ↵) → folders.
 import { h, qsa } from '../lib/dom.js';
-import { ParticleField } from '../lib/particles.js';
+import { Pointillism } from '../lib/pointillism.js';
 
-const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const RETURN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10 4 15l5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>';
 
 export async function mount(root, params, ctx) {
-  const canvas = h('canvas.landing-canvas');
+  const canvas = h('canvas.pointfield');
   const grain = h('div.landing-grain');
+  const vignette = h('div.landing-vignette');
 
-  const enterBtn = h('button.enter-btn', { type: 'button', 'aria-label': 'Enter Onyx Folio' }, [
-    h('span.ring', { html: ARROW }),
-    h('span', {}, [
-      h('span.enter-label', { text: 'Enter' }),
+  const enterBtn = h('button.enter-pill.reveal', { type: 'button', style: { transitionDelay: '.5s' }, text: 'Enter', 'aria-label': 'Enter Onyx Folio' });
+
+  const core = h('div.landing-core', {}, [
+    h('h1.landing-title.reveal', { style: { transitionDelay: '.15s' }, text: 'Onyx Folio' }),
+    h('p.landing-sub.reveal', { style: { transitionDelay: '.32s' }, text: 'A gallery you can compose.' }),
+    enterBtn,
+    h('div.enter-hint.reveal', { style: { transitionDelay: '.64s' } }, [
+      h('span', { html: RETURN }),
+      h('span', { text: 'Best viewed in the dark' }),
     ]),
   ]);
 
-  const titleMask = h('h1.landing-title', {}, [
-    h('span.glow'),
-    h('span.mask', {}, [ h('span', { html: 'Onyx&nbsp;<em>Folio</em>' }) ]),
-  ]);
+  root.append(canvas, grain, vignette, core);
 
-  const stage = h('div.landing-stage', {}, [
-    h('div.mono-label.landing-kicker.reveal', { style: { transitionDelay: '.15s' }, html: 'Gallery <span class="dot">·</span> Portfolio <span class="dot">·</span> Lookbook' }),
-    titleMask,
-    h('p.landing-sub.reveal', { style: { transitionDelay: '.6s' }, text: 'Curate the images you love into a quiet, considered archive — then compose them into a portfolio or lookbook entirely your own.' }),
-    h('div.reveal', { style: { transitionDelay: '.85s' } }, [
-      enterBtn,
-      h('div.enter-hint', { text: 'Press ↵ to begin' }),
-    ]),
-  ]);
+  const field = new Pointillism(canvas, { src: 'assets/flower-source.jpg', step: 6, dim: 1.0, sat: 0.55 });
+  window.__pf = field; // debug handle (harmless)
+  field.load().then(() => field.start()).catch((e) => console.error('pointillism', e));
 
-  const frame = h('div.landing-frame', {}, [
-    h('div.landing-row', {}, [
-      h('div.mono-label.reveal', { style: { transitionDelay: '1s' }, html: 'Onyx Folio <span class="dot">·</span> Gallery System' }),
-      h('div.mono-label.reveal', { style: { transitionDelay: '1.05s' }, text: 'Est. MMXXVI' }),
-    ]),
-    stage,
-    h('div.landing-row.foot', {}, [
-      h('div.mono-label.reveal', { style: { transitionDelay: '1.1s' }, text: 'Collect · Arrange · Bind' }),
-      h('div.mono-label.reveal', { style: { transitionDelay: '1.15s' }, text: 'Edition 1.0' }),
-    ]),
-  ]);
-
-  root.append(canvas, grain, frame);
-
-  const field = new ParticleField(canvas);
-  field.start();
-
-  // trigger reveal once laid out
   requestAnimationFrame(() => requestAnimationFrame(() => {
     qsa('.reveal', root).forEach((el) => el.classList.add('in'));
-    titleMask.querySelector('.mask').classList.add('in');
   }));
 
   const go = () => ctx.nav('/folders');

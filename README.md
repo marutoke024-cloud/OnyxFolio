@@ -10,8 +10,8 @@ HTML / CSS / ES modules, no framework, no toolchain.
 
 ## The four rooms
 
-1. **Enter** — an atmospheric landing of drifting, twinkling particles. Press the
-   ring or hit <kbd>↵</kbd> to step inside.
+1. **Enter** — a dim flower painting, stippled into softly twinkling pointillist
+   dots, glows behind a quiet title. Press **Enter** (the pill or <kbd>↵</kbd>) to step inside.
 2. **Folders** — a slowly drifting, looping field of onyx folders. Each shows a few
    of its photos peeking from the pocket. Scroll / drag to roam, click to open,
    right‑click (or long‑press) to rename or delete, ＋ to add a new one.
@@ -59,7 +59,7 @@ css/                  base design system + one stylesheet per view
 js/
   main.js             hash router with cross‑fading views
   views/              landing · folders · album · portfolio
-  lib/                particles · image ingest · icons · chrome · settings · dom helpers
+  lib/                pointillism · image ingest · icons · chrome · settings · dom helpers
   storage/            db.js (IndexedDB) · sync.js (Firebase Storage)
 assets/               fonts · icons · favicon
 ```
