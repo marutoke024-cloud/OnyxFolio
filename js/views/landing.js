@@ -24,7 +24,7 @@ export async function mount(root, params, ctx) {
 
   root.append(canvas, grain, vignette, core);
 
-  const field = new Pointillism(canvas, { src: 'assets/flower-source.jpg', step: 6, dim: 1.0, sat: 0.55 });
+  const field = new Pointillism(canvas, { src: 'assets/flower-source.jpg', step: 4, dim: 1.15, sat: 0.62 });
   window.__pf = field; // debug handle (harmless)
   field.load().then(() => field.start()).catch((e) => console.error('pointillism', e));
 

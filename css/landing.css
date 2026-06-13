@@ -32,7 +32,7 @@
 .landing-core::before {
   content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: min(72vw, 760px); height: min(48vh, 380px); z-index: -1; pointer-events: none;
-  background: radial-gradient(ellipse at center, rgba(8,8,10,.55), rgba(8,8,10,.18) 55%, transparent 72%);
+  background: radial-gradient(ellipse at center, rgba(8,8,10,.42), rgba(8,8,10,.12) 55%, transparent 72%);
 }
 
 .landing-title {
@@ -43,7 +43,7 @@
   letter-spacing: 0.006em;
   color: #f4f2ec;
   padding: 0 0.14em;                 /* keep italic/round glyph edges from clipping */
-  text-shadow: 0 2px 34px rgba(0,0,0,0.6);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.85), 0 2px 34px rgba(0,0,0,0.7);
 }
 
 .landing-sub {

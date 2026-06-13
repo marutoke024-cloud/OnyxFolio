@@ -95,9 +95,9 @@ export class Pointillism {
     const data = sctx.getImageData(0, 0, sw, sh).data;
 
     const step = this.step;
-    const ds = Math.max(1.4, step * 0.46);
+    const ds = Math.max(1.2, step * 0.5);
     this.dotSize = ds;
-    const maxR = Math.min(bw, bh) * 0.74;
+    const maxR = Math.min(bw, bh) * 0.95;
 
     // static dots are baked into this offscreen base
     const base = document.createElement('canvas');
@@ -112,7 +112,7 @@ export class Pointillism {
         let r = data[i], g = data[i + 1], b = data[i + 2];
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
         const lum = gray / 255;
-        if (lum < 0.085) continue;                 // drop near-black → flower emerges from dark
+        if (lum < 0.075) continue;                 // drop near-black → flower emerges from dark
 
         r = gray + (r - gray) * this.sat;          // desaturate toward grey
         g = gray + (g - gray) * this.sat;
@@ -121,10 +121,10 @@ export class Pointillism {
         const px = bx + x, py = by + y;
         const dist = Math.hypot(px - cx, py - cy);
         const fall = Math.max(0, 1 - dist / maxR);
-        const falloff = fall * fall;
+        const falloff = Math.min(1, fall * 1.5);   // plateau in the centre, fade only at the rim
         if (falloff <= 0.02) continue;
 
-        const baseA = Math.min(0.9, Math.pow(lum, 0.72)) * falloff * this.dim;  // lift midtones
+        const baseA = Math.min(0.96, Math.pow(lum, 0.58)) * falloff * this.dim;  // lift midtones
         if (baseA < 0.012) continue;
         const col = `${r | 0},${g | 0},${b | 0}`;
 
