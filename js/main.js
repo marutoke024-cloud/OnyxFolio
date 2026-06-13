@@ -76,3 +76,10 @@ window.addEventListener('hashchange', handleRoute);
 window.addEventListener('DOMContentLoaded', handleRoute);
 // DOMContentLoaded may have already fired for a module script:
 if (document.readyState !== 'loading') handleRoute();
+
+// On GitHub Pages, a network-first service worker makes deploys show up on the
+// next load instead of being masked by the CDN cache. (Local dev already sends
+// no-store, so we skip it there.)
+if ('serviceWorker' in navigator && location.hostname.endsWith('github.io')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
