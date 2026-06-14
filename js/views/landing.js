@@ -10,14 +10,14 @@ export async function mount(root, params, ctx) {
 
   const enterBtn = h('button.enter-pill.reveal', { type: 'button', style: { transitionDelay: '.5s' }, text: 'Enter', 'aria-label': 'Enter Onyx Folio' });
 
+  const lbLink = h('button.landing-lblink.reveal', { type: 'button', style: { transitionDelay: '.9s' }, text: 'Look Books', 'aria-label': 'Open lookbooks', onclick: () => ctx.nav('/portfolio') });
   const core = h('div.landing-core', {}, [
     h('h1.landing-title.reveal', { style: { transitionDelay: '.15s' }, text: 'Onyx Folio' }),
     h('p.landing-sub.reveal', { style: { transitionDelay: '.32s' }, text: 'A gallery you can compose.' }),
     enterBtn,
+    lbLink,
   ]);
-
-  const lbLink = h('button.landing-lblink.reveal', { type: 'button', style: { transitionDelay: '.85s' }, text: 'Look Books', 'aria-label': 'Open lookbooks', onclick: () => ctx.nav('/portfolio') });
-  root.append(canvas, grain, vignette, core, lbLink);
+  root.append(canvas, grain, vignette, core);
 
   const field = new Pointillism(canvas, { src: 'assets/flower-source.jpg', step: 4, dim: 1.15, sat: 0.62 });
   window.__pf = field; // debug handle (harmless)

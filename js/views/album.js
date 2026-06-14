@@ -288,7 +288,47 @@ export async function mount(root, params, ctx) {
   ]);
   document.body.append(lightbox);
 
-  function showCurrent() { const im = images[lbIndex]; if (im) lbImg.src = blobURL('full-' + im.id, im.blob || im.thumb); }
+  // --- zoom & pan (wheel · pinch · drag) ---
+  let zScale = 1, zx = 0, zy = 0;
+  const applyZoom = () => { lbImg.style.transform = `translate(${zx.toFixed(1)}px, ${zy.toFixed(1)}px) scale(${zScale.toFixed(3)})`; lbImg.style.cursor = zScale > 1 ? 'grab' : 'auto'; };
+  const resetZoom = () => { zScale = 1; zx = 0; zy = 0; applyZoom(); };
+  function clampPan() {
+    const sr = lbStage.getBoundingClientRect();
+    const mx = Math.max(0, (lbImg.clientWidth * zScale - sr.width) / 2 + 30);
+    const my = Math.max(0, (lbImg.clientHeight * zScale - sr.height) / 2 + 30);
+    zx = Math.max(-mx, Math.min(mx, zx)); zy = Math.max(-my, Math.min(my, zy));
+  }
+  function zoomAt(clientX, clientY, factor) {
+    const sr = lbStage.getBoundingClientRect();
+    const mx = clientX - (sr.left + sr.width / 2), my = clientY - (sr.top + sr.height / 2);
+    const ns = Math.max(1, Math.min(6, zScale * factor)), k = ns / zScale;
+    zx = mx - (mx - zx) * k; zy = my - (my - zy) * k; zScale = ns;
+    if (zScale <= 1.001) { zScale = 1; zx = 0; zy = 0; }
+    clampPan(); applyZoom();
+  }
+  lbStage.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.18 : 1 / 1.18); }, { passive: false });
+  lbImg.addEventListener('dblclick', (e) => { e.preventDefault(); zScale > 1 ? resetZoom() : zoomAt(e.clientX, e.clientY, 2.4); });
+  const pts = new Map();
+  let pinchD = 0, pinchS0 = 1, panSX = 0, panSY = 0, panZX = 0, panZY = 0, panning = false;
+  lbStage.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.icon-btn')) return;
+    pts.set(e.pointerId, e);
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinchD = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); pinchS0 = zScale; panning = false; }
+    else if (zScale > 1) { panning = true; panSX = e.clientX; panSY = e.clientY; panZX = zx; panZY = zy; lbImg.style.cursor = 'grabbing'; try { lbStage.setPointerCapture(e.pointerId); } catch {} }
+  });
+  lbStage.addEventListener('pointermove', (e) => {
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, e);
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      zoomAt((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2, (Math.max(1, Math.min(6, pinchS0 * d / (pinchD || 1)))) / zScale);
+    } else if (panning) { zx = panZX + (e.clientX - panSX); zy = panZY + (e.clientY - panSY); clampPan(); applyZoom(); }
+  });
+  const endPt = (e) => { pts.delete(e.pointerId); if (pts.size < 2) { panning = false; lbImg.style.cursor = zScale > 1 ? 'grab' : 'auto'; } };
+  lbStage.addEventListener('pointerup', endPt);
+  lbStage.addEventListener('pointercancel', endPt);
+
+  function showCurrent() { const im = images[lbIndex]; if (im) lbImg.src = blobURL('full-' + im.id, im.blob || im.thumb); resetZoom(); }
   function openLightbox(i) { lbIndex = i; showCurrent(); lightbox.classList.add('in'); document.addEventListener('keydown', lbKeys); }
   function closeLightbox() { lightbox.classList.remove('in'); document.removeEventListener('keydown', lbKeys); }
   function step(d) { if (!images.length) return; lbIndex = (lbIndex + d + images.length) % images.length; showCurrent(); }
