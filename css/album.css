@@ -93,6 +93,11 @@
 .lb-tags .chip svg { width: 12px; height: 12px; }
 .lb-tag-add { display: flex; gap: 8px; margin-top: 10px; }
 .lb-tag-add input { flex: 1; }
+/* custom tag suggestions (replaces <datalist>, which iOS Safari ignores) */
+.tag-suggest { display: none; flex-wrap: wrap; gap: 6px; margin-top: 10px; max-height: 168px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.tag-suggest.show { display: flex; }
+.tag-sug { background: var(--bg-3); border: 1px solid var(--line); color: var(--ink-1); font-size: 12px; padding: 7px 11px; border-radius: 16px; cursor: pointer; }
+.tag-sug:hover { border-color: var(--accent); color: var(--ink-0); }
 .lb-side .lb-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
 .lb-meta { font-size: 11px; color: var(--ink-3); letter-spacing: .04em; line-height: 1.7; }
 .lb-close { position: fixed; top: 16px; right: 16px; z-index: 3; }

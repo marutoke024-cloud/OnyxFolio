@@ -82,7 +82,8 @@ async function openList(root, ctx) {
 
   await render();
   window.addEventListener('onyx-private-change', render);
-  return { destroy() { window.removeEventListener('onyx-private-change', render); } };
+  window.addEventListener('onyx-portfolios-changed', render);
+  return { destroy() { window.removeEventListener('onyx-private-change', render); window.removeEventListener('onyx-portfolios-changed', render); } };
 }
 
 function blankPortfolio(name) {
@@ -170,9 +171,12 @@ async function openEditor(root, id, ctx) {
   let saveT = 0;
   function persist() {
     const clean = { ...portfolio, pages: pages.map(({ _idx, ...rest }) => rest), updatedAt: Date.now() };
-    savePortfolio(clean);
+    // tell the list to refresh once the write lands (the router mounts the list
+    // before this editor's deferred destroy persists, so it would read stale data)
+    Promise.resolve(savePortfolio(clean)).then(() => window.dispatchEvent(new Event('onyx-portfolios-changed')));
   }
   function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(persist, 600); }
+  function saveNow() { clearTimeout(saveT); persist(); }   // for discrete edits that may be followed immediately by navigating back
 
   // --- page rendering ---
   function txtEl(page, key, cls, ph) {
@@ -244,14 +248,22 @@ async function openEditor(root, id, ctx) {
       const startX = e.clientX, startY = e.clientY;
       const base = page.offsets?.[key] || { x: 50, y: 50 };
       const ox = base.x, oy = base.y;
+      try { el.setPointerCapture(e.pointerId); } catch {}   // keep receiving moves on touch even if it scrolls
       const onMove = (ev) => {
         const nx = Math.max(0, Math.min(100, ox - (ev.clientX - startX) / rect.width * 130));
         const ny = Math.max(0, Math.min(100, oy - (ev.clientY - startY) / rect.height * 130));
         page.offsets = page.offsets || {}; page.offsets[key] = { x: nx, y: ny };
         img.style.objectPosition = `${nx}% ${ny}%`;
       };
-      const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); scheduleSave(); };
-      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
+      const onUp = () => {
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onUp);
+        el.removeEventListener('pointercancel', onUp);
+        saveNow();
+      };
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onUp);
+      el.addEventListener('pointercancel', onUp);
     });
     return el;
   }
@@ -674,7 +686,7 @@ async function openEditor(root, id, ctx) {
       type: 'button', role: 'switch', 'aria-checked': String(!!portfolio.private), title: 'Toggle private',
       onclick: () => { portfolio.private = !portfolio.private; privToggle.classList.toggle('on', !!portfolio.private); privToggle.setAttribute('aria-checked', String(!!portfolio.private)); },
     }, [h('span.knob')]);
-    const save = () => { portfolio.name = nameIn.value.trim() || 'Untitled'; titleSpan.textContent = portfolio.name; scheduleSave(); closeModal(); };
+    const save = () => { portfolio.name = nameIn.value.trim() || 'Untitled'; titleSpan.textContent = portfolio.name; saveNow(); closeModal(); };
     nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
     openModal(h('div.modal', {}, [
       h('h2.display', { text: 'Lookbook settings' }),
@@ -707,9 +719,16 @@ async function openEditor(root, id, ctx) {
       h('button.lay-opt', { onclick: () => { closeMenu(); kind === 'add' ? addPage(L.id) : changeLayout(L.id); } }, [miniFor(L.id), h('span', { text: L.name })])));
     document.body.append(menu);
     const r = anchor.getBoundingClientRect();
-    const mw = 3 * 64 + 2 * 6 + 16;
-    menu.style.left = Math.max(8, Math.min(r.left + r.width / 2 - mw / 2, window.innerWidth - mw - 8)) + 'px';
-    menu.style.bottom = (window.innerHeight - r.top + 10) + 'px';
+    const mw = menu.offsetWidth || (3 * 64 + 2 * 6 + 16);
+    const mh = menu.offsetHeight;   // capped by max-height, so a tall menu scrolls
+    // sit to the LEFT of the right-edge bar, vertically centred on the button, clamped on-screen
+    let left = r.left - mw - 10;
+    if (left < 8) left = Math.min(r.right + 10, window.innerWidth - mw - 8);
+    left = Math.max(8, left);
+    let top = Math.max(8, Math.min(r.top + r.height / 2 - mh / 2, window.innerHeight - mh - 8));
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+    menu.style.bottom = 'auto';
     requestAnimationFrame(() => menu.classList.add('in'));
     setTimeout(() => document.addEventListener('pointerdown', closeOnOut), 0);
   }
