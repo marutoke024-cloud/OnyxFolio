@@ -212,14 +212,22 @@ async function openEditor(root, id, ctx) {
     const off = (page.offsets && page.offsets[key]) || { x: 50, y: 50 };
     const el = h('div', { class: 'slot' + (sid ? '' : ' empty') + (extra ? ' ' + extra : ''), dataset: { key } });
     if (sid) {
-      const img = h('img', { src: getURL(sid), alt: '', draggable: false });
-      img.style.objectPosition = `${off.x}% ${off.y}%`;
+      const url = getURL(sid);
       const zoom = (page.zoom && page.zoom[key]) || 1;
+      const zoomedOut = zoom < 1 && page.layout !== 'spread';
+      if (zoomedOut) {
+        // a blurred copy of the picture fills the gap, so a shrunk image sits on its
+        // own soft colour instead of a hard black frame
+        const fill = h('div.slot-fill');
+        fill.style.backgroundImage = `url("${url}")`;
+        el.append(fill);
+      }
+      const img = h('img', { src: url, alt: '', draggable: false });
+      img.style.objectPosition = `${off.x}% ${off.y}%`;
       if (zoom !== 1 && page.layout !== 'spread') {
         img.style.transform = `scale(${zoom})`;
         img.style.transformOrigin = `${off.x}% ${off.y}%`;
-        // zooming out reveals the whole picture (incl. its own margins) rather than a cropped frame on black
-        if (zoom < 1) img.style.objectFit = 'contain';
+        if (zoom < 1) { img.style.objectFit = 'contain'; img.style.position = 'relative'; img.style.zIndex = '1'; }
       }
       el.append(img);
     } else {
