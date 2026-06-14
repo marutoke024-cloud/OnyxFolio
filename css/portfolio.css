@@ -208,13 +208,13 @@
 /* page edge click affordance (turn) — active only in viewing mode */
 .turn-zone { position: absolute; top: 0; bottom: 0; width: 34%; z-index: 45; cursor: pointer; display: none; }
 .turn-zone.left { left: 0; cursor: w-resize; } .turn-zone.right { right: 0; cursor: e-resize; }
-.pf-editor.view .turn-zone { display: block; }
+.pf-editor.viewing .turn-zone { display: block; }
 
 /* viewing mode (default) — chrome hidden, the book fills the screen */
-.pf-editor.view { padding: 14px; }
-.pf-editor.view ~ .pf-bar,
-.pf-editor.view ~ .topbar { opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(20px); }
-.pf-editor.view ~ .topbar { transform: translateY(-12px); }
+.pf-editor.viewing { padding: 14px; }
+.pf-editor.viewing ~ .pf-bar,
+.pf-editor.viewing ~ .topbar { opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(20px); }
+.pf-editor.viewing ~ .topbar { transform: translateY(-12px); }
 .pf-bar, .topbar { transition: opacity .3s var(--ease-out), transform .3s var(--ease-out); }
 
 /* the always-visible edit/view toggle */
@@ -227,7 +227,7 @@
 
 @media (max-width: 760px) {
   .pf-editor { padding: calc(var(--header-h) + 4px) 64px 10px 10px; }
-  .pf-editor.view { padding: 8px; }
+  .pf-editor.viewing { padding: 8px; }
   .pf-bar { right: 8px; padding: 8px 6px; gap: 2px; }
   .pf-bar .icon-btn { width: 34px; height: 34px; }
   .pf-viewtoggle { left: 12px; bottom: 12px; width: 40px; height: 40px; }

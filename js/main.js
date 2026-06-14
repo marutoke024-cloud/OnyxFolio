@@ -52,13 +52,21 @@ async function handleRoute() {
   app.append(el);
 
   const ctx = { nav, params };
-  const instance = await mod.mount(el, params, ctx);
+  let instance = null;
+  try {
+    instance = await mod.mount(el, params, ctx);
+  } catch (e) {
+    // A mount failure must NOT leave the view stuck invisible (.view starts
+    // visibility:hidden and only `is-active` reveals it) — that would be a black screen.
+    console.error('View mount failed:', name, e);
+  }
   if (myToken !== token) { try { instance?.destroy?.(); } catch {} el.remove(); return; }
 
-  // Cross-fade: activate new, retire old.
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => el.classList.add('is-active'));
-  });
+  // Cross-fade in. rAF gives a clean transition, but it is throttled/paused when
+  // the tab is backgrounded, so a timeout fallback guarantees the view is shown.
+  const activate = () => el.classList.add('is-active');
+  requestAnimationFrame(() => requestAnimationFrame(activate));
+  setTimeout(activate, 80);
 
   const outgoing = current;
   current = { name, instance, el };

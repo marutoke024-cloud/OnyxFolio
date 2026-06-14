@@ -526,7 +526,7 @@ async function openEditor(root, id, ctx) {
 
   // --- viewing ⇄ editing ---
   function applyViewMode() {
-    editor.classList.toggle('view', viewMode);
+    editor.classList.toggle('viewing', viewMode);
     viewToggle.innerHTML = '';
     viewToggle.append(ico(viewMode ? 'edit' : 'eye'));
     viewToggle.title = viewMode ? 'Edit' : 'Done — view';
