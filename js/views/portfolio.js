@@ -805,9 +805,18 @@ async function openEditor(root, id, ctx) {
             buildTabs(); loadGrid();
           } }, ['♥'])
         : null;
+      // collapse the folder row so it doesn't crowd out the thumbnails (remembered per device)
+      let foldersHidden = localStorage.getItem('onyx-pick-folders-hidden') === '1';
+      const foldersToggle = h('button.icon-btn.pick-folders-toggle', { title: 'Show / hide folders', onclick: () => {
+        foldersHidden = !foldersHidden;
+        localStorage.setItem('onyx-pick-folders-hidden', foldersHidden ? '1' : '0');
+        applyFoldersVis();
+      } }, [ico('folder')]);
+      const applyFoldersVis = () => { tabs.classList.toggle('collapsed', foldersHidden); foldersToggle.classList.toggle('active', !foldersHidden); };
       buildTabs();
+      applyFoldersVis();
       openModal(h('div.modal', { style: { width: 'min(720px, 100%)' } }, [
-        h('div.pick-head', {}, [h('h2.display', { text: 'Choose an image' }), heart]),
+        h('div.pick-head', {}, [h('h2.display', { text: 'Choose an image' }), h('div.pick-head-tools', {}, [foldersToggle, heart])]),
         tabs,
         grid,
         h('div.modal-actions', {}, [

@@ -210,6 +210,9 @@
 /* image picker */
 .pick-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .pick-head h2 { margin: 0; }
+.pick-head-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.pick-folders-toggle.active { border-color: var(--accent); color: var(--accent); }
+.pick-folders.collapsed { display: none; }
 .pick-heart { font-size: 16px; line-height: 1; color: var(--ink-2); flex-shrink: 0; }
 .pick-heart.on { color: #e2a3b3; border-color: rgba(226,163,179,0.5); background: rgba(226,163,179,0.08); }
 .pick-folders { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
