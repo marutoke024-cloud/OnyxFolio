@@ -151,12 +151,12 @@ async function openEditor(root, id, ctx) {
   // viewing mode is the default — a small floating toggle reveals the editor chrome
   const viewToggle = h('button.icon-btn.pf-viewtoggle', { title: 'Toggle edit mode', onclick: () => toggleView() }, [ico('edit')]);
   // back to the lookbook list (always reachable, incl. chrome-free viewing mode)
-  const backToList = h('button.icon-btn.pf-backbtn', { title: 'Back to lookbooks', onclick: () => ctx.nav('/portfolio') }, [ico('back')]);
+  const backToList = h('button.icon-btn.pf-backbtn', { title: 'Back to lookbooks', onclick: () => confirmExit('/portfolio') }, [ico('back')]);
 
   const topbar = buildTopbar({
     crumbs: [
-      { label: 'Folders', onClick: () => ctx.nav('/folders') },
-      { label: 'Portfolios', onClick: () => ctx.nav('/portfolio') },
+      { label: 'Folders', onClick: () => confirmExit('/folders') },
+      { label: 'Portfolios', onClick: () => confirmExit('/portfolio') },
       { label: portfolio.name, jp: true, onClick: renamePortfolio },
     ],
   });
@@ -168,8 +168,9 @@ async function openEditor(root, id, ctx) {
   let viewMode = true, selectedOverlay = null, selectedSlot = null;
 
   // --- persistence ---
-  let saveT = 0;
+  let saveT = 0, suppressSave = false;   // suppressSave: set when discarding so destroy() can't re-save the edits
   function persist() {
+    if (suppressSave) return;
     const clean = { ...portfolio, pages: pages.map(({ _idx, ...rest }) => rest), updatedAt: Date.now() };
     // tell the list to refresh once the write lands (the router mounts the list
     // before this editor's deferred destroy persists, so it would read stale data)
@@ -177,6 +178,39 @@ async function openEditor(root, id, ctx) {
   }
   function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(persist, 600); }
   function saveNow() { clearTimeout(saveT); persist(); }   // for discrete edits that may be followed immediately by navigating back
+
+  // snapshot of the lookbook as opened, for the "save changes?" prompt on the way out
+  const cleanStr = () => JSON.stringify({ ...portfolio, pages: pages.map(({ _idx, ...rest }) => rest) });
+  const snapshot = cleanStr();
+  const isDirty = () => cleanStr() !== snapshot;
+  function exitPrompt() {
+    return new Promise((resolve) => {
+      openModal(h('div.modal', {}, [
+        h('h2.display', { text: 'Save changes?' }),
+        h('p.modal-sub', { text: 'Keep your edits to this lookbook, or discard them and leave it as it was.' }),
+        h('div.modal-actions', { style: { justifyContent: 'space-between' } }, [
+          h('button.btn.btn-danger', { text: 'Discard', onclick: () => { closeModal(); resolve('discard'); } }),
+          h('div', { style: { display: 'flex', gap: '10px' } }, [
+            h('button.btn.btn-ghost', { text: 'Cancel', onclick: () => { closeModal(); resolve('cancel'); } }),
+            h('button.btn.btn-accent', { text: 'Save', onclick: () => { closeModal(); resolve('save'); } }),
+          ]),
+        ]),
+      ]));
+    });
+  }
+  async function confirmExit(dest) {
+    if (!isDirty()) { ctx.nav(dest); return; }
+    const choice = await exitPrompt();
+    if (choice === 'cancel') return;
+    if (choice === 'discard') {
+      suppressSave = true;                        // also stops destroy() from re-saving the edits
+      await savePortfolio(JSON.parse(snapshot));  // restore the pre-edit version
+      window.dispatchEvent(new Event('onyx-portfolios-changed'));
+    } else {
+      saveNow();
+    }
+    ctx.nav(dest);
+  }
 
   // --- page rendering ---
   function txtEl(page, key, cls, ph) {
