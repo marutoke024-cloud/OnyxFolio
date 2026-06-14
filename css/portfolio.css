@@ -83,6 +83,8 @@
 .editing .slot.empty:hover::after { display: none; }
 .book.move-mode .face.live .slot { cursor: move; }
 .book.move-mode .editing .slot:hover::after { display: none; }
+/* the page that layout / tone / delete will act on, when a spread offers a choice */
+.page.sel-page { box-shadow: inset 0 0 0 2px var(--accent); }
 
 .pad { padding: clamp(16px, 3.4%, 30px); }
 .txt {

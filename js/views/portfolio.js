@@ -131,14 +131,17 @@ async function openEditor(root, id, ctx) {
   const textBtn = h('button.icon-btn', { title: 'Add text over the image', onclick: () => addOverlay() }, [ico('text')]);
   const styleBtn = h('button.icon-btn', { title: 'Text style (size · colour · opacity · border)', onclick: () => openOverlayStyle(selectedOverlay) }, [ico('sliders')]);
   const textbgBtn = h('button.icon-btn', { title: 'Text panel colour', onclick: (e) => openTextBgPanel(e.currentTarget) }, [ico('palette')]);
+  const pageBtn = h('button.icon-btn', { title: 'Select which page (left / right of the spread)', onclick: () => togglePageSelect() }, [ico('pages')]);
   const bgBtn = h('button.icon-btn', { title: 'Page tone', onclick: () => cycleBg() }, [ico('image')]);
   const moveBtn = h('button.icon-btn', { title: 'Reframe image (drag inside the slot)', onclick: () => toggleMove() }, [ico('move')]);
+  const zoomInBtn = h('button.icon-btn', { title: 'Zoom the image in', onclick: () => adjustZoom(1.15) }, [ico('zoomIn')]);
+  const zoomOutBtn = h('button.icon-btn', { title: 'Zoom the image out', onclick: () => adjustZoom(1 / 1.15) }, [ico('zoomOut')]);
   const delBtn = h('button.icon-btn', { title: 'Delete page', onclick: () => deletePage() }, [ico('trash')]);
   const bar = h('div.pf-bar', {}, [
     prevBtn, indicator, nextBtn,
-    h('span.sepv'), addBtn, layoutBtn, pasteBtn,
+    h('span.sepv'), pageBtn, addBtn, layoutBtn, pasteBtn,
     h('span.sepv'), textBtn, styleBtn, textbgBtn,
-    h('span.sepv'), bgBtn, moveBtn, delBtn,
+    h('span.sepv'), bgBtn, moveBtn, zoomInBtn, zoomOutBtn, delBtn,
   ]);
   // viewing mode is the default — a small floating toggle reveals the editor chrome
   const viewToggle = h('button.icon-btn.pf-viewtoggle', { title: 'Toggle edit mode', onclick: () => toggleView() }, [ico('edit')]);
@@ -155,7 +158,7 @@ async function openEditor(root, id, ctx) {
 
   // --- state ---
   let mode = 'spread', cur = 0, nUnits = 1, leaves = [], activePageIdx = 0, moveMode = false;
-  let viewMode = true, selectedOverlay = null;
+  let viewMode = true, selectedOverlay = null, selectSide = 'right';
 
   // --- persistence ---
   let saveT = 0;
@@ -205,6 +208,8 @@ async function openEditor(root, id, ctx) {
     if (sid) {
       const img = h('img', { src: getURL(sid), alt: '', draggable: false });
       img.style.objectPosition = `${off.x}% ${off.y}%`;
+      const zoom = (page.zoom && page.zoom[key]) || 1;
+      if (zoom !== 1 && page.layout !== 'spread') { img.style.transform = `scale(${zoom})`; img.style.transformOrigin = `${off.x}% ${off.y}%`; }
       el.append(img);
     } else {
       el.append(h('div.add-hint', {}, [ico('image'), h('span', { text: 'Add image' })]));
@@ -413,7 +418,15 @@ async function openEditor(root, id, ctx) {
       f.querySelector('.page')?.classList.add('editing');
       qsa('.txt', f).forEach((t) => (t.contentEditable = 'true'));
     });
-    activePageIdx = (mode === 'spread' ? 2 * cur : cur);
+    // choose which page edits target — left or right of the open spread
+    qsa('.page.sel-page', book).forEach((p) => p.classList.remove('sel-page'));
+    const hasLeft = mode === 'spread' && cur > 0 && !!leaves[cur - 1];
+    activePageIdx = mode !== 'spread' ? cur
+      : (hasLeft && selectSide === 'left') ? 2 * cur - 1 : 2 * cur;
+    if (hasLeft) {
+      const selFace = live.find((f) => f && f._page && f._page._idx === activePageIdx);
+      selFace?.querySelector('.page')?.classList.add('sel-page');
+    }
   }
 
   // --- navigation ---
@@ -575,6 +588,23 @@ async function openEditor(root, id, ctx) {
     moveBtn.classList.toggle('active', moveMode);
     book.classList.toggle('move-mode', moveMode);
     toast(moveMode ? 'Move mode: drag a picture to reframe it.' : 'Move mode off.');
+  }
+  // zoom the picture(s) on the active page in / out (in addition to reframing)
+  function adjustZoom(factor) {
+    const page = pages[activePageIdx];
+    const keys = page && page.slots ? Object.keys(page.slots).filter((k) => page.slots[k]) : [];
+    if (!keys.length) { toast('Add an image to this page first.'); return; }
+    page.zoom = page.zoom || {};
+    keys.forEach((k) => { page.zoom[k] = Math.max(0.5, Math.min(4, (page.zoom[k] || 1) * factor)); });
+    scheduleSave(); rebuild(true);
+  }
+  // pick which page of the open spread the edit buttons target (left or right)
+  function togglePageSelect() {
+    if (mode !== 'spread' || cur === 0) { toast('Open a two-page spread to choose a side.'); return; }
+    selectSide = selectSide === 'right' ? 'left' : 'right';
+    pageBtn.classList.toggle('active', selectSide === 'left');
+    setLive();
+    toast(`Editing the ${selectSide} page.`);
   }
   async function renamePortfolio() {
     const n = await promptModal({ title: 'Rename portfolio', value: portfolio.name, jp: true });

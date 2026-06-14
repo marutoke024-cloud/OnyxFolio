@@ -184,7 +184,7 @@ input.field::placeholder, textarea.field::placeholder { color: var(--ink-3); }
 
 /* --- Modal / overlay --- */
 .overlay {
-  position: fixed; inset: 0; z-index: 100;
+  position: fixed; inset: 0; z-index: 180;   /* above the lightbox (120) so edit dialogs sit over an enlarged image */
   background: rgba(4,4,6,0.72);
   backdrop-filter: blur(8px);
   display: flex; align-items: center; justify-content: center;
