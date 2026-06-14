@@ -6,6 +6,7 @@ import { ico, icons } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import { getFolder, getImages, addImage, updateImage, deleteImage, blobURL, revokeURL } from '../storage/db.js';
 import { fileToImageRecord } from '../lib/image.js';
+import { imageFileFromPasteEvent, readClipboardImageFile } from '../lib/clipboard.js';
 
 const BASE_W = 320;
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
@@ -29,6 +30,7 @@ export async function mount(root, params, ctx) {
     crumbs: [{ label: 'Folders', onClick: () => ctx.nav('/folders') }, { label: folder.name, jp: true }],
     actions: [
       { icon: 'book', title: 'Open portfolios', onClick: () => ctx.nav('/portfolio') },
+      { icon: 'clipboard', title: 'Paste image from clipboard', onClick: () => pasteFromClipboard() },
       { icon: 'upload', label: 'Add', accent: true, title: 'Add images', onClick: () => fileInput.click() },
     ],
   });
@@ -214,6 +216,18 @@ export async function mount(root, params, ctx) {
     await reload();
   }
   fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
+  // paste a copied image: Ctrl/Cmd+V (desktop) or the clipboard button (mobile)
+  const onPaste = (e) => {
+    if (e.target && (e.target.isContentEditable || e.target.matches('input,textarea'))) return;
+    const f = imageFileFromPasteEvent(e);
+    if (f) { e.preventDefault(); handleFiles([f]); }
+  };
+  document.addEventListener('paste', onPaste);
+  async function pasteFromClipboard() {
+    const f = await readClipboardImageFile();
+    if (f) handleFiles([f]);
+    else toast('No image found in the clipboard.');
+  }
   cloud.addEventListener('dragover', (e) => { e.preventDefault(); cloud.classList.add('drag-over'); });
   cloud.addEventListener('dragleave', (e) => { if (!cloud.contains(e.relatedTarget)) cloud.classList.remove('drag-over'); });
   cloud.addEventListener('drop', (e) => { e.preventDefault(); cloud.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
@@ -365,6 +379,7 @@ export async function mount(root, params, ctx) {
     destroy() {
       running = false; stopLoop();
       document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener('paste', onPaste);
       document.removeEventListener('keydown', lbKeys);
       ro.disconnect();
       lightbox.remove();

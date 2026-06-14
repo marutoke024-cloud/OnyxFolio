@@ -93,16 +93,16 @@
 .txt-caption { font-size: clamp(11px, 1.9cqw, 13px); opacity: .7; }
 .page { container-type: inline-size; }
 
-/* layout: cover */
-.lay-cover { flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 18px; }
+/* layout: cover — full-bleed image with a large title overlaid at the bottom-right */
+.lay-cover { padding: 0; }
 .lay-cover .cover-img { position: absolute; inset: 0; }
-.lay-cover .cover-img img { opacity: .42; }
-.lay-cover .cover-img.empty { place-items: end center; }              /* hint sits at the bottom, clear of the title */
-.lay-cover .cover-img.empty .add-hint { margin-bottom: 12%; }
-.lay-cover .cover-veil { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(80% 60% at 50% 50%, transparent, rgba(8,8,10,.7)); }
-.lay-cover .cover-inner { position: relative; z-index: 1; padding: 8%; display: flex; flex-direction: column; gap: 14px; align-items: center; pointer-events: none; }
-.lay-cover .cover-inner .txt { pointer-events: auto; }                /* title stays editable; clicks elsewhere set the cover image */
-.lay-cover .txt-title { font-size: clamp(26px, 7cqw, 56px); }
+.lay-cover .cover-img img { opacity: 1; }
+.lay-cover .cover-img.empty { place-items: center; }
+.lay-cover .cover-grad { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to top, rgba(6,6,9,.85) 0%, rgba(6,6,9,.3) 24%, rgba(6,6,9,0) 50%); }
+.lay-cover .cover-cap { position: absolute; right: 7%; bottom: 8%; left: 14%; z-index: 1; display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 6px; pointer-events: none; }
+.lay-cover .cover-cap .txt { pointer-events: auto; }                  /* title stays editable; clicks elsewhere set the cover image */
+.lay-cover .cover-cap .txt-kicker { margin: 0; text-shadow: 0 1px 10px rgba(0,0,0,.85); }
+.lay-cover .cover-cap .txt-title { font-size: clamp(30px, 10cqw, 74px); line-height: 1.04; font-weight: 400; text-shadow: 0 2px 22px rgba(0,0,0,.75); }
 
 /* layout: full bleed */
 .lay-full { padding: 0; }
@@ -116,10 +116,40 @@
 /* layout: two stacked images */
 .lay-duo { flex-direction: column; padding: 0; gap: 3px; background: #000; }
 
-/* layout: split — image top, text bottom */
-.lay-split { flex-direction: column; padding: 0; }
-.lay-split .slot { flex: 1.4; }
-.lay-split .split-text { flex: 1; padding: clamp(16px,4%,30px); display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+/* layout: split family — image + a text panel, stacked.
+   plain = image on top · "R" = text on top · "82" = 8:2 image-heavy ratio */
+.lay-split, .lay-splitR, .lay-split82, .lay-split82R { flex-direction: column; padding: 0; }
+.lay-splitR, .lay-split82R { flex-direction: column-reverse; }       /* reversed → text ends up on top */
+.lay-split .slot, .lay-splitR .slot { flex: 1.4; }
+.lay-split82 .slot, .lay-split82R .slot { flex: 8; }
+.lay-split .split-text, .lay-splitR .split-text,
+.lay-split82 .split-text, .lay-split82R .split-text {
+  flex: 1; padding: clamp(16px,4%,30px); display: flex; flex-direction: column; justify-content: center; gap: 10px;
+}
+.lay-split82 .split-text, .lay-split82R .split-text { flex: 2; padding: clamp(10px,3%,20px); gap: 6px; }
+
+/* layout: spread — one picture spanning the open book (two linked half-pages) */
+.lay-spread { padding: 0; }
+.lay-spread .slot { flex: 1; position: relative; overflow: hidden; }
+.lay-spread .spread-img img { position: absolute; top: 0; left: 0; width: 200%; max-width: none; height: 100%; object-fit: cover; }
+.lay-spread .spread-img.half-r img { left: -100%; }                  /* right half-page shows the right side of the image */
+
+/* text overlay — free-floating, laid over a page */
+.txt-ovl {
+  position: absolute; transform: translate(-50%, -50%);
+  font-weight: 600; line-height: 1.18; white-space: pre; text-align: center;
+  paint-order: stroke fill; -webkit-text-stroke: 0 transparent;
+  z-index: 6; max-width: 92%; cursor: default;
+}
+.editing .txt-ovl { cursor: move; }
+.txt-ovl:focus { cursor: text; outline: 1px dashed rgba(255,255,255,.55); outline-offset: 5px; }
+
+/* style / colour panels */
+.ov-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); }
+.ov-row span { font-size: 13px; color: var(--ink-1); }
+.ov-row input[type="range"] { flex: 1; max-width: 200px; }
+.ov-row input[type="color"] { width: 44px; height: 28px; border: 1px solid var(--line); border-radius: 4px; background: none; padding: 2px; cursor: pointer; }
+.ov-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* layout: text page */
 .lay-text { flex-direction: column; justify-content: center; }
@@ -132,7 +162,9 @@
   background: #131318;
   border: 1px solid var(--line); border-radius: 30px; padding: 10px 7px;
   box-shadow: var(--shadow-lift);
+  max-height: 94vh; overflow-y: auto; scrollbar-width: none;
 }
+.pf-bar::-webkit-scrollbar { display: none; }
 .pf-bar .sepv { width: 22px; height: 1px; background: var(--line); margin: 4px 0; }
 .pf-bar .page-ind { font-size: 10px; letter-spacing: .03em; color: var(--ink-1); text-align: center; padding: 2px 0; }
 .pf-bar .icon-btn { width: 38px; height: 38px; border: none; background: transparent; }
@@ -145,6 +177,7 @@
   position: absolute; z-index: 60; background: var(--bg-1); border: 1px solid var(--line);
   border-radius: 10px; padding: 8px; box-shadow: var(--shadow-lift);
   display: grid; grid-template-columns: repeat(3, 64px); gap: 6px;
+  max-height: 64vh; overflow-y: auto;
   opacity: 0; transform: translateY(8px) scale(.97); transition: all .2s var(--ease-out); transform-origin: bottom center;
 }
 .pop-menu.in { opacity: 1; transform: none; }
@@ -173,8 +206,25 @@
 .turn-zone.left { left: 0; } .turn-zone.right { right: 0; }
 .turn-zone::after { content: ''; position: absolute; top: 50%; width: 20px; height: 20px; }
 
+/* viewing mode (default) — chrome hidden, the book fills the screen */
+.pf-editor.view { padding: 14px; }
+.pf-editor.view ~ .pf-bar,
+.pf-editor.view ~ .topbar { opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(20px); }
+.pf-editor.view ~ .topbar { transform: translateY(-12px); }
+.pf-bar, .topbar { transition: opacity .3s var(--ease-out), transform .3s var(--ease-out); }
+
+/* the always-visible edit/view toggle */
+.pf-viewtoggle {
+  position: fixed; left: 16px; bottom: 16px; z-index: 55;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: #131318; border: 1px solid var(--line); box-shadow: var(--shadow-lift);
+}
+.pf-viewtoggle:hover { background: var(--bg-3); }
+
 @media (max-width: 760px) {
   .pf-editor { padding: calc(var(--header-h) + 4px) 64px 10px 10px; }
+  .pf-editor.view { padding: 8px; }
   .pf-bar { right: 8px; padding: 8px 6px; gap: 2px; }
   .pf-bar .icon-btn { width: 34px; height: 34px; }
+  .pf-viewtoggle { left: 12px; bottom: 12px; width: 40px; height: 40px; }
 }

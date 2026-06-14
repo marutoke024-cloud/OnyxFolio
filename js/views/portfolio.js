@@ -4,11 +4,15 @@ import { ico, icons } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import {
   getPortfolios, getPortfolio, savePortfolio, deletePortfolio,
-  getFolders, getImages, getAllImages, getImage, blobURL,
+  getFolders, getImages, getAllImages, getImage, addFolder, addImage, blobURL,
 } from '../storage/db.js';
+import { fileToImageRecord } from '../lib/image.js';
+import { imageFileFromPasteEvent, readClipboardImageFile } from '../lib/clipboard.js';
 
 const LAYOUTS = [
-  { id: 'cover', name: 'Cover' }, { id: 'full', name: 'Full' }, { id: 'split', name: 'Split' },
+  { id: 'cover', name: 'Cover' }, { id: 'full', name: 'Full' }, { id: 'spread', name: 'Spread' },
+  { id: 'split', name: 'Split' }, { id: 'splitR', name: 'Split ↑' },
+  { id: 'split82', name: 'Wide 8:2' }, { id: 'split82R', name: 'Wide 8:2 ↑' },
   { id: 'caption', name: 'Caption' }, { id: 'duo', name: 'Duo' }, { id: 'text', name: 'Text' },
 ];
 
@@ -120,13 +124,21 @@ async function openEditor(root, id, ctx) {
   const nextBtn = h('button.icon-btn', { title: 'Next', onclick: () => next(), style: { transform: 'scaleX(-1)' } }, [ico('back')]);
   const addBtn = h('button.icon-btn', { title: 'Add page', onclick: (e) => openLayoutMenu(e.currentTarget, 'add') }, [ico('plus')]);
   const layoutBtn = h('button.icon-btn', { title: 'Change layout', onclick: (e) => openLayoutMenu(e.currentTarget, 'change') }, [ico('layout')]);
+  const pasteBtn = h('button.icon-btn', { title: 'Paste image from clipboard', onclick: () => pasteImage() }, [ico('clipboard')]);
+  const textBtn = h('button.icon-btn', { title: 'Add text over the image', onclick: () => addOverlay() }, [ico('text')]);
+  const styleBtn = h('button.icon-btn', { title: 'Text style (size · colour · opacity · border)', onclick: () => openOverlayStyle(selectedOverlay) }, [ico('sliders')]);
+  const textbgBtn = h('button.icon-btn', { title: 'Text panel colour', onclick: (e) => openTextBgPanel(e.currentTarget) }, [ico('palette')]);
   const bgBtn = h('button.icon-btn', { title: 'Page tone', onclick: () => cycleBg() }, [ico('image')]);
   const moveBtn = h('button.icon-btn', { title: 'Reframe image (drag inside the slot)', onclick: () => toggleMove() }, [ico('move')]);
   const delBtn = h('button.icon-btn', { title: 'Delete page', onclick: () => deletePage() }, [ico('trash')]);
   const bar = h('div.pf-bar', {}, [
     prevBtn, indicator, nextBtn,
-    h('span.sepv'), addBtn, layoutBtn, bgBtn, moveBtn, delBtn,
+    h('span.sepv'), addBtn, layoutBtn, pasteBtn,
+    h('span.sepv'), textBtn, styleBtn, textbgBtn,
+    h('span.sepv'), bgBtn, moveBtn, delBtn,
   ]);
+  // viewing mode is the default — a small floating toggle reveals the editor chrome
+  const viewToggle = h('button.icon-btn.pf-viewtoggle', { title: 'Toggle edit mode', onclick: () => toggleView() }, [ico('edit')]);
 
   const topbar = buildTopbar({
     crumbs: [
@@ -135,11 +147,12 @@ async function openEditor(root, id, ctx) {
       { label: portfolio.name, jp: true, onClick: renamePortfolio },
     ],
   });
-  root.append(editor, bar, topbar);
+  root.append(editor, bar, topbar, viewToggle);
   const titleSpan = topbar.querySelector('.crumbs .cur');
 
   // --- state ---
   let mode = 'spread', cur = 0, nUnits = 1, leaves = [], activePageIdx = 0, moveMode = false;
+  let viewMode = true, selectedOverlay = null;
 
   // --- persistence ---
   let saveT = 0;
@@ -152,6 +165,7 @@ async function openEditor(root, id, ctx) {
   // --- page rendering ---
   function txtEl(page, key, cls, ph) {
     const el = h('div', { class: 'txt ' + cls, dataset: { key, ph }, contenteditable: 'false' });
+    el.setAttribute('spellcheck', 'false'); el.setAttribute('autocapitalize', 'off'); el.setAttribute('autocorrect', 'off');
     el.textContent = page.texts?.[key] || '';
     el.classList.toggle('is-empty', !el.textContent);
     el.addEventListener('input', () => {
@@ -170,6 +184,15 @@ async function openEditor(root, id, ctx) {
     page.offsets = page.offsets || {};
     if (picked === '__remove__') { delete page.slots[key]; delete page.offsets[key]; }
     else { page.slots[key] = picked; page.offsets[key] = { x: 50, y: 50 }; await ensureURL(picked); }
+    // a spread picture is shared by both half-pages
+    if (page.layout === 'spread' && page.spreadId) {
+      const sib = pages.find((p) => p !== page && p.spreadId === page.spreadId);
+      if (sib) {
+        sib.slots = sib.slots || {}; sib.offsets = sib.offsets || {};
+        if (picked === '__remove__') { delete sib.slots.a; delete sib.offsets.a; }
+        else { sib.slots.a = picked; sib.offsets.a = { x: 50, y: 50 }; }
+      }
+    }
     activePageIdx = page._idx; scheduleSave(); rebuild(true);
   }
   function slotEl(page, key, extra = '') {
@@ -208,23 +231,28 @@ async function openEditor(root, id, ctx) {
 
   function renderPage(page) {
     const el = h('div', { class: `page bg-${page.bg || 'dark'} lay-${page.layout}`, dataset: { idx: page._idx } });
+    const textBg = page.textBg || portfolio.textBg || '';
+    // a text panel whose background colour follows the page / portfolio setting
+    const sect = (cls, kids) => { const s = h('div', { class: cls }, kids); if (textBg) s.style.background = textBg; return s; };
     switch (page.layout) {
       case 'cover':
         el.append(
           slotEl(page, 'a', 'cover-img'),
-          h('div.cover-veil'),
-          h('div.cover-inner', {}, [
+          h('div.cover-grad'),
+          h('div.cover-cap', {}, [
             txtEl(page, 'kicker', 'txt-kicker', 'LOOKBOOK'),
             txtEl(page, 'title', 'txt-title', '無題のルックブック'),
-            txtEl(page, 'body', 'txt-caption', '2026'),
           ]),
         );
         break;
       case 'full':
         el.append(slotEl(page, 'a'));
         break;
+      case 'spread':
+        el.append(slotEl(page, 'a', 'spread-img half-' + (page.half || 'l')));
+        break;
       case 'caption':
-        el.append(slotEl(page, 'a'), h('div.cap.pad', {}, [
+        el.append(slotEl(page, 'a'), sect('cap pad', [
           txtEl(page, 'kicker', 'txt-kicker', 'PLATE'),
           txtEl(page, 'caption', 'txt-caption', 'Caption'),
         ]));
@@ -233,7 +261,10 @@ async function openEditor(root, id, ctx) {
         el.append(slotEl(page, 'a'), slotEl(page, 'b'));
         break;
       case 'split':
-        el.append(slotEl(page, 'a'), h('div.split-text', {}, [
+      case 'splitR':
+      case 'split82':
+      case 'split82R':
+        el.append(slotEl(page, 'a'), sect('split-text', [
           txtEl(page, 'kicker', 'txt-kicker', 'SECTION'),
           txtEl(page, 'title', 'txt-title', '見出し'),
           txtEl(page, 'body', 'txt-body', '本文をここに入力'),
@@ -241,6 +272,7 @@ async function openEditor(root, id, ctx) {
         break;
       case 'text':
       default:
+        if (textBg) el.style.background = textBg;
         el.append(h('div.pad', {}, [
           txtEl(page, 'kicker', 'txt-kicker', 'CHAPTER'),
           txtEl(page, 'title', 'txt-title', '見出し'),
@@ -248,6 +280,42 @@ async function openEditor(root, id, ctx) {
         ]));
         break;
     }
+    (page.overlays || []).forEach((ov) => el.append(overlayEl(page, ov)));
+    return el;
+  }
+
+  // free-floating text laid over a page (size / colour / opacity / border)
+  function overlayEl(page, ov) {
+    const el = h('div', { class: 'txt txt-ovl', dataset: { ovid: ov.id }, contenteditable: 'false' });
+    el.setAttribute('spellcheck', 'false'); el.setAttribute('autocapitalize', 'off'); el.setAttribute('autocorrect', 'off');
+    el.textContent = ov.text || '';
+    const apply = () => {
+      el.style.left = (ov.x ?? 50) + '%';
+      el.style.top = (ov.y ?? 50) + '%';
+      el.style.fontSize = (ov.size || 8) + 'cqw';
+      el.style.color = ov.color || '#ffffff';
+      el.style.opacity = String(ov.opacity ?? 1);
+      el.style.webkitTextStroke = ov.border ? `${(ov.borderW || 0.8).toFixed(2)}px ${ov.borderColor || '#000000'}` : '0 transparent';
+    };
+    apply(); el._apply = apply;
+    el.addEventListener('input', () => { ov.text = el.textContent; activePageIdx = page._idx; scheduleSave(); });
+    el.addEventListener('focus', () => { activePageIdx = page._idx; selectedOverlay = { page, ov, el }; });
+    // drag to reposition (a small move-threshold lets a plain click edit the text)
+    el.addEventListener('pointerdown', (e) => {
+      if (!el.closest('.face')?.classList.contains('live')) return;
+      const r = el.parentElement.getBoundingClientRect();
+      const sx = e.clientX, sy = e.clientY, ox = ov.x ?? 50, oy = ov.y ?? 50;
+      let dragging = false;
+      const onMove = (ev) => {
+        if (!dragging && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6) { dragging = true; el.blur(); }
+        if (!dragging) return;
+        ov.x = Math.max(0, Math.min(100, ox + (ev.clientX - sx) / r.width * 100));
+        ov.y = Math.max(0, Math.min(100, oy + (ev.clientY - sy) / r.height * 100));
+        el.style.left = ov.x + '%'; el.style.top = ov.y + '%';
+      };
+      const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); if (dragging) { activePageIdx = page._idx; scheduleSave(); } };
+      window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
+    });
     return el;
   }
 
@@ -256,13 +324,15 @@ async function openEditor(root, id, ctx) {
   function computeMode() { return vpWidth() >= 760 ? 'spread' : 'single'; }
   function sizeBook() {
     const w = vpWidth();
-    // bar moved to the right edge → use almost the full height, leave room on the right
-    const hBudget = (window.innerHeight || 640) - 96;
-    let ph = Math.min(Math.max(hBudget, 300), 1200);
+    // viewing mode hides the chrome → let the book use almost the whole screen
+    const vReserve = viewMode ? 24 : 96;
+    const hReserve = viewMode ? 24 : 92;
+    const hBudget = (window.innerHeight || 640) - vReserve;
+    let ph = Math.min(Math.max(hBudget, 300), 1600);
     let pw = ph * 0.72;
     const m = computeMode();
     const bw = (m === 'spread' ? pw * 2 : pw);
-    const availW = Math.max(260, w - 92);
+    const availW = Math.max(260, w - hReserve);
     if (bw > availW) { const s = availW / bw; pw *= s; ph *= s; }
     pw = Math.max(60, pw); ph = Math.max(80, pw / 0.72);
     book.style.setProperty('--pw', pw.toFixed(1) + 'px');
@@ -326,6 +396,7 @@ async function openEditor(root, id, ctx) {
       f.querySelector('.page')?.classList.remove('editing');
       qsa('.txt', f).forEach((t) => (t.contentEditable = 'false'));
     }));
+    if (viewMode) { activePageIdx = (mode === 'spread' ? 2 * cur : cur); return; }  // read-only while viewing
     const live = [];
     if (leaves[cur]) live.push(leaves[cur]._front);
     if (mode === 'spread' && cur > 0 && leaves[cur - 1]) live.push(leaves[cur - 1]._back);
@@ -345,19 +416,147 @@ async function openEditor(root, id, ctx) {
 
   // --- edit ops ---
   function addPage(layout) {
+    if (layout === 'spread') return addSpread();
     const np = { id: uid(), layout, bg: 'dark', slots: {}, texts: {} };
     const at = Math.min(activePageIdx + 1, pages.length);
     pages.splice(at, 0, np);
+    scheduleSave(); rebuild(); goTo(at);
+  }
+  // a spread = two linked half-pages that share one picture across the open book
+  function addSpread() {
+    const spreadId = uid();
+    const L = { id: uid(), layout: 'spread', half: 'l', spreadId, bg: 'dark', slots: {}, texts: {} };
+    const R = { id: uid(), layout: 'spread', half: 'r', spreadId, bg: 'dark', slots: {}, texts: {} };
+    // align to a real spread: the left half must sit on an odd index (1,3,5…)
+    let at = (mode === 'spread') ? (2 * cur + 1) : (activePageIdx + 1);
+    at = Math.min(Math.max(at, 0), pages.length);
+    pages.splice(at, 0, L, R);
     scheduleSave(); rebuild(); goTo(at);
   }
   async function deletePage() {
     if (pages.length <= 1) { toast('A portfolio needs at least one page.'); return; }
     const ok = await confirmModal({ title: 'Delete this page?', confirmText: 'Delete', danger: true });
     if (!ok) return;
-    pages.splice(activePageIdx, 1);
+    const p = pages[activePageIdx];
+    const idxs = [activePageIdx];
+    if (p.spreadId) { const si = pages.findIndex((q) => q !== p && q.spreadId === p.spreadId); if (si >= 0) idxs.push(si); }
+    if (pages.length - idxs.length < 1) { toast('A portfolio needs at least one page.'); return; }
+    idxs.sort((a, b) => b - a).forEach((i) => pages.splice(i, 1));
     scheduleSave(); rebuild(); goTo(Math.min(activePageIdx, pages.length - 1));
   }
-  function changeLayout(layout) { pages[activePageIdx].layout = layout; scheduleSave(); rebuild(true); }
+  function changeLayout(layout) {
+    if (layout === 'spread') return addSpread();   // a spread can only be created as a pair
+    pages[activePageIdx].layout = layout; scheduleSave(); rebuild(true);
+  }
+
+  // --- text overlays (request: text laid over an image) ---
+  function addOverlay() {
+    const page = pages[activePageIdx] || pages[0];
+    page.overlays = page.overlays || [];
+    const ov = { id: uid(), text: 'テキスト', x: 50, y: 50, size: 9, color: '#ffffff', opacity: 1, border: false, borderColor: '#000000' };
+    page.overlays.push(ov);
+    scheduleSave(); rebuild(true);
+    setTimeout(() => {
+      const el = book.querySelector(`.txt-ovl[data-ovid="${ov.id}"]`);
+      selectedOverlay = { page, ov, el };
+      openOverlayStyle(selectedOverlay);
+    }, 60);
+  }
+  function openOverlayStyle(sel) {
+    if (!sel || !sel.ov) { toast('Add a text first (the T+ button), then style it.'); return; }
+    const { page, ov, el } = sel;
+    const row = (label, input) => h('label.ov-row', {}, [h('span', { text: label }), input]);
+    const sizeIn = h('input', { type: 'range', min: '3', max: '26', step: '0.5', value: String(ov.size || 9) });
+    const colorIn = h('input', { type: 'color', value: ov.color || '#ffffff' });
+    const opacIn = h('input', { type: 'range', min: '0.1', max: '1', step: '0.05', value: String(ov.opacity ?? 1) });
+    const borderIn = h('input', { type: 'checkbox' }); borderIn.checked = !!ov.border;
+    const borderColorIn = h('input', { type: 'color', value: ov.borderColor || '#000000' });
+    const live = el || book.querySelector(`.txt-ovl[data-ovid="${ov.id}"]`);
+    const upd = () => {
+      ov.size = +sizeIn.value; ov.color = colorIn.value; ov.opacity = +opacIn.value;
+      ov.border = borderIn.checked; ov.borderColor = borderColorIn.value;
+      live && live._apply && live._apply(); scheduleSave();
+    };
+    [sizeIn, colorIn, opacIn, borderIn, borderColorIn].forEach((i) => i.addEventListener('input', upd));
+    const del = () => {
+      page.overlays = (page.overlays || []).filter((o) => o !== ov);
+      selectedOverlay = null; scheduleSave(); rebuild(true); closeModal();
+    };
+    openModal(h('div.modal.ov-style', { style: { width: 'min(360px, 100%)' } }, [
+      h('h2.display', { text: 'Text style' }),
+      row('Size', sizeIn), row('Colour', colorIn), row('Opacity', opacIn),
+      row('Border', borderIn), row('Border colour', borderColorIn),
+      h('div.modal-actions', { style: { justifyContent: 'space-between' } }, [
+        h('button.btn.btn-danger', { text: 'Delete', onclick: del }),
+        h('button.btn.btn-accent', { text: 'Done', onclick: () => closeModal() }),
+      ]),
+    ]));
+  }
+
+  // --- text-panel colour (request: pick the text-section background, reusable) ---
+  function openTextBgPanel() {
+    const page = pages[activePageIdx] || pages[0];
+    const curColor = page.textBg || portfolio.textBg || '#14141a';
+    const colorIn = h('input', { type: 'color', value: curColor });
+    const applyAll = h('input', { type: 'checkbox' });
+    const reset = h('button.btn.btn-ghost', { text: 'Reset to default', onclick: () => { delete page.textBg; if (applyAll.checked) { pages.forEach((p) => delete p.textBg); portfolio.textBg = null; } scheduleSave(); rebuild(true); closeModal(); } });
+    const apply = () => {
+      const c = colorIn.value;
+      page.textBg = c;
+      if (applyAll.checked) { portfolio.textBg = c; pages.forEach((p) => { p.textBg = c; }); }  // reuse on every page
+      scheduleSave(); rebuild(true); closeModal();
+    };
+    openModal(h('div.modal', { style: { width: 'min(340px, 100%)' } }, [
+      h('h2.display', { text: 'Text panel colour' }),
+      h('label.ov-row', {}, [h('span', { text: 'Colour' }), colorIn]),
+      h('label.ov-row', {}, [h('span', { text: 'Apply to every page' }), applyAll]),
+      h('div.modal-actions', { style: { justifyContent: 'space-between' } }, [
+        reset,
+        h('button.btn.btn-accent', { text: 'Apply', onclick: apply }),
+      ]),
+    ]));
+  }
+
+  // --- viewing ⇄ editing ---
+  function applyViewMode() {
+    editor.classList.toggle('view', viewMode);
+    viewToggle.innerHTML = '';
+    viewToggle.append(ico(viewMode ? 'edit' : 'eye'));
+    viewToggle.title = viewMode ? 'Edit' : 'Done — view';
+  }
+  function toggleView() { viewMode = !viewMode; applyViewMode(); sizeBook(); rebuild(true); }
+
+  // --- paste an image from the clipboard into the active page ---
+  let pasteFolderId = null;
+  async function ensurePasteFolder() {
+    if (pasteFolderId) return pasteFolderId;
+    const folders = await getFolders();
+    let f = folders.find((x) => x.name === 'Clipboard');
+    if (!f) f = await addFolder('Clipboard');
+    pasteFolderId = f.id; return f.id;
+  }
+  async function placePasted(file) {
+    try {
+      const fid = await ensurePasteFolder();
+      const img = await addImage(await fileToImageRecord(file, fid));
+      await ensureURL(img.id);
+      const page = pages[activePageIdx] || pages[0];
+      const key = (page.layout === 'duo' && page.slots && page.slots.a && !page.slots.b) ? 'b' : 'a';
+      page.slots = page.slots || {}; page.offsets = page.offsets || {};
+      page.slots[key] = img.id; page.offsets[key] = { x: 50, y: 50 };
+      if (page.layout === 'spread' && page.spreadId) {
+        const sib = pages.find((p) => p !== page && p.spreadId === page.spreadId);
+        if (sib) { sib.slots = sib.slots || {}; sib.offsets = sib.offsets || {}; sib.slots.a = img.id; sib.offsets.a = { x: 50, y: 50 }; }
+      }
+      scheduleSave(); rebuild(true);
+      toast('Pasted image added (saved to “Clipboard” folder).');
+    } catch (e) { console.warn('paste failed', e); toast('Could not read that image.'); }
+  }
+  async function pasteImage() {
+    const f = await readClipboardImageFile();
+    if (f) placePasted(f);
+    else toast('No image found in the clipboard.');
+  }
   function cycleBg() {
     const order = ['dark', 'light', 'paper'];
     const p = pages[activePageIdx];
@@ -381,9 +580,11 @@ async function openEditor(root, id, ctx) {
   function miniFor(idn) {
     const I = (g, img) => h('i', { style: { flex: String(g), background: 'var(--ink-3)', opacity: img ? '.85' : '.4', borderRadius: '1px', minHeight: img ? '0' : '3px', maxHeight: img ? 'none' : '3px' } });
     const map = {
-      full: [I(1, true)], duo: [I(1, true), I(1, true)],
-      split: [I(2, true), I(0, false), I(0, false)], caption: [I(2, true), I(0, false)],
-      text: [I(0, false), I(0, false), I(0, false)], cover: [I(2, true), I(0, false)],
+      full: [I(1, true)], duo: [I(1, true), I(1, true)], spread: [I(1, true)],
+      split: [I(2, true), I(0, false), I(0, false)], splitR: [I(0, false), I(0, false), I(2, true)],
+      split82: [I(4, true), I(0, false)], split82R: [I(0, false), I(4, true)],
+      caption: [I(2, true), I(0, false)], text: [I(0, false), I(0, false), I(0, false)],
+      cover: [I(2, true), I(0, false)],
     };
     return h('div.mini', {}, map[idn] || map.full);
   }
@@ -464,16 +665,23 @@ async function openEditor(root, id, ctx) {
     if (e.target.isContentEditable || e.target.matches('input,textarea')) return;
     if (e.key === 'ArrowRight') next(); else if (e.key === 'ArrowLeft') prev();
   };
+  const onPaste = (e) => {
+    if (e.target && (e.target.isContentEditable || e.target.matches('input,textarea'))) return;
+    const f = imageFileFromPasteEvent(e);
+    if (f) { e.preventDefault(); placePasted(f); }
+  };
   let rT; const onResize = () => { clearTimeout(rT); rT = setTimeout(() => { const m = computeMode(); sizeBook(); if (m !== mode) rebuild(true); }, 160); };
 
   bookWrap.addEventListener('pointerdown', onDown);
   window.addEventListener('pointerup', onUp);
   document.addEventListener('keydown', onKey);
+  document.addEventListener('paste', onPaste);
   window.addEventListener('resize', onResize);
   // React when the editor first gets real dimensions (and on orientation change).
   const ro = new ResizeObserver(onResize);
   ro.observe(editor);
 
+  applyViewMode();   // lookbooks open in viewing mode by default
   rebuild();
 
   return {
@@ -482,6 +690,7 @@ async function openEditor(root, id, ctx) {
       ro.disconnect();
       window.removeEventListener('pointerup', onUp);
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('paste', onPaste);
       window.removeEventListener('resize', onResize);
       closeMenu();
     },
