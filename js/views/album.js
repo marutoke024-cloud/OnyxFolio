@@ -31,6 +31,7 @@ export async function mount(root, params, ctx) {
     actions: [
       { icon: 'book', title: 'Open portfolios', onClick: () => ctx.nav('/portfolio') },
       { icon: 'clipboard', title: 'Paste image from clipboard', onClick: () => pasteFromClipboard() },
+      { icon: 'trash', title: 'Delete every image in this folder', onClick: () => clearFolder() },
       { icon: 'upload', label: 'Add', accent: true, title: 'Add images', onClick: () => fileInput.click() },
     ],
   });
@@ -200,6 +201,21 @@ export async function mount(root, params, ctx) {
   function onRandom() { activeTag = null; renderRail(); applyFilter(); }
 
   async function reload() { images = await getImages(folderId); buildCloud(); renderRail(); }
+
+  // empty the whole folder — one explicit warning before anything is removed
+  async function clearFolder() {
+    if (!images.length) { toast('This folder is already empty.'); return; }
+    const ok = await confirmModal({
+      title: 'Delete every image in this folder?',
+      message: `All ${images.length} image${images.length === 1 ? '' : 's'} in “${folder.name}” will be permanently removed from this device. This cannot be undone.`,
+      confirmText: 'Delete all', danger: true,
+    });
+    if (!ok) return;
+    const ids = images.map((im) => im.id);
+    for (const id of ids) { await deleteImage(id); revokeURL('thumb-' + id); revokeURL('full-' + id); }
+    await reload();
+    toast(`Deleted ${ids.length} image${ids.length === 1 ? '' : 's'}.`);
+  }
 
   // --- add images ---
   async function handleFiles(fileList) {

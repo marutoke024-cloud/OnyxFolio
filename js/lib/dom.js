@@ -52,6 +52,10 @@ export function toast(msg, { error = false, ms = 2600 } = {}) {
 let overlay;
 export function openModal(node) {
   overlay = overlay || qs('#overlay');
+  // a previous closeModal() may have a pending clear scheduled — cancel it so it
+  // can't wipe the modal we're about to open (this is what made the download
+  // "working" window vanish ~360ms after confirming).
+  if (overlay._clearT) { clearTimeout(overlay._clearT); overlay._clearT = 0; }
   overlay.innerHTML = '';
   overlay.append(node);
   overlay.setAttribute('aria-hidden', 'false');
@@ -67,7 +71,7 @@ export function closeModal() {
   overlay.classList.remove('is-open');
   overlay.setAttribute('aria-hidden', 'true');
   if (overlay._onKey) document.removeEventListener('keydown', overlay._onKey);
-  setTimeout(() => { overlay.innerHTML = ''; }, 360);
+  overlay._clearT = setTimeout(() => { overlay.innerHTML = ''; overlay._clearT = 0; }, 360);
 }
 
 /** Promise-based confirm dialog. */

@@ -23,17 +23,17 @@
 .folders-block {
   --rg: clamp(14px, 2.2vh, 28px);
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(clamp(118px, 11vw, 168px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(clamp(88px, 8vw, 128px), 1fr));
   gap: var(--rg) clamp(8px, 1vw, 18px);
   /* no per-block header offset → every block is identical, so the loop tiles seamlessly
      (the header zone is faded by the stage mask instead) */
   padding: 0 clamp(14px, 3vw, 48px) var(--rg);
   align-content: start;
 }
-/* phone portrait → exactly three columns */
+/* phone portrait → four columns */
 @media (max-width: 600px) {
   .folders-block {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: clamp(12px, 2.4vw, 20px) clamp(7px, 1.6vw, 12px);
     padding: 0 clamp(10px, 3vw, 18px) var(--rg);
   }
