@@ -117,7 +117,10 @@ async function openEditor(root, id, ctx) {
   // --- DOM scaffold ---
   const book = h('div.book');
   const bookWrap = h('div.book-wrap', {}, [book]);
-  const editor = h('div.pf-editor', {}, [bookWrap]);
+  // viewing-mode page turn: click the right edge → next, left edge → previous
+  const turnLeft = h('div.turn-zone.left', { title: 'Previous page', onclick: () => prev() });
+  const turnRight = h('div.turn-zone.right', { title: 'Next page', onclick: () => next() });
+  const editor = h('div.pf-editor', {}, [bookWrap, turnLeft, turnRight]);
 
   const indicator = h('span.page-ind');
   const prevBtn = h('button.icon-btn', { title: 'Previous', onclick: () => prev() }, [ico('back')]);
@@ -382,7 +385,11 @@ async function openEditor(root, id, ctx) {
   }
 
   function applyFlips() { leaves.forEach((lf, j) => lf.classList.toggle('flipped', j < cur)); }
-  function updateZ() { leaves.forEach((lf, j) => { lf.style.zIndex = String(j < cur ? j : nUnits - j); }); }
+  function updateZ() {
+    leaves.forEach((lf, j) => { lf.style.zIndex = String(j < cur ? j : nUnits - j); });
+    // the cover is a single page → centre it and hide the left well until the book is opened
+    book.classList.toggle('cover-mode', mode === 'spread' && cur === 0);
+  }
   function updateInd() {
     const rightPage = (mode === 'spread' ? 2 * cur : cur) + 1;
     indicator.textContent = `${Math.min(rightPage, pages.length)} / ${pages.length}`;

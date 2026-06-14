@@ -36,6 +36,10 @@
   transition: transform .6s var(--ease-out);
 }
 .book.single { width: var(--pw); }
+/* the cover is a single page: slide the book so the right (cover) page is centred,
+   and hide the black left well — opening the cover slides the book back to centre */
+.book.cover-mode { transform: translateX(-25%); }
+.book.cover-mode .book-well { opacity: 0; }
 
 /* a stitched left page well (spread mode) */
 .book-well { position: absolute; top: 0; left: 0; width: var(--pw); height: var(--ph); background: #0c0c10; border-radius: 6px 0 0 6px; box-shadow: inset -18px 0 30px -20px rgba(0,0,0,.9); }
@@ -201,10 +205,10 @@
 .pick-cell:hover { border-color: var(--accent); }
 .pick-cell.sel::after { content: '✓'; position: absolute; inset: 0; background: rgba(205,184,154,.25); color: var(--bg-0); display: grid; place-items: center; }
 
-/* page edge click affordance (turn) */
-.turn-zone { position: absolute; top: 0; bottom: 0; width: 12%; z-index: 30; cursor: pointer; }
-.turn-zone.left { left: 0; } .turn-zone.right { right: 0; }
-.turn-zone::after { content: ''; position: absolute; top: 50%; width: 20px; height: 20px; }
+/* page edge click affordance (turn) — active only in viewing mode */
+.turn-zone { position: absolute; top: 0; bottom: 0; width: 34%; z-index: 45; cursor: pointer; display: none; }
+.turn-zone.left { left: 0; cursor: w-resize; } .turn-zone.right { right: 0; cursor: e-resize; }
+.pf-editor.view .turn-zone { display: block; }
 
 /* viewing mode (default) — chrome hidden, the book fills the screen */
 .pf-editor.view { padding: 14px; }
