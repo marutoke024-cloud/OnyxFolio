@@ -123,7 +123,7 @@ export async function mount(root, params, ctx) {
       const left = (W - inRow * cellW) / 2;
       s.tx = left + col * cellW + cellW / 2;
       s.ty = top + row * cellH + cellH / 2;
-      s.ts = Math.min((cellW * 0.84) / s.w0, (cellH * 0.84) / s.ih0);
+      s.ts = Math.min((cellW * 0.8) / s.w0, (cellH * 0.8) / s.ih0);
       s.tz = 300 + i;
     });
   }
@@ -156,8 +156,9 @@ export async function mount(root, params, ctx) {
       s.cy += (s.ty - s.cy) * 0.06;
       s.cs += (s.ts - s.cs) * 0.07;
       s.copacity += (s.topacity - s.copacity) * 0.08;
-      const dx = s.amp * Math.sin(t * s.spd + s.phx);
-      const dy = s.amp * 0.85 * Math.sin(t * s.spd * 0.9 + s.phy);
+      const driftK = activeTag ? 0.3 : 1;   // calm the drift while a theme grid is shown → no overlap
+      const dx = driftK * s.amp * Math.sin(t * s.spd + s.phx);
+      const dy = driftK * s.amp * 0.85 * Math.sin(t * s.spd * 0.9 + s.phy);
       let scale = s.cs, z = s.tz;
       if (s.hover) { scale = s.cs * 1.14; z = 9999; }
       const hw = s.w0 * scale / 2, hh = s.ih0 * scale / 2;
