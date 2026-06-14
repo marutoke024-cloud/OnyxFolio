@@ -78,8 +78,8 @@
 
 /* subtle bottom-centre link to the lookbooks (plain text, not a button) */
 .landing-lblink {
-  margin-top: clamp(10px, 3vh, 26px); align-self: center;
-  background: none; border: none; cursor: pointer; padding: 6px 10px;
+  position: absolute; bottom: clamp(22px, 5vh, 48px); left: 50%; transform: translateX(-50%);
+  z-index: 3; background: none; border: none; cursor: pointer; padding: 6px 10px;
   font-family: var(--font-ui); font-size: 11px; letter-spacing: 0.34em; text-transform: uppercase;
   color: var(--ink-3); transition: color 0.4s var(--ease-out); -webkit-tap-highlight-color: transparent;
 }

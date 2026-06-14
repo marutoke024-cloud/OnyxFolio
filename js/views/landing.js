@@ -15,9 +15,8 @@ export async function mount(root, params, ctx) {
     h('h1.landing-title.reveal', { style: { transitionDelay: '.15s' }, text: 'Onyx Folio' }),
     h('p.landing-sub.reveal', { style: { transitionDelay: '.32s' }, text: 'A gallery you can compose.' }),
     enterBtn,
-    lbLink,
   ]);
-  root.append(canvas, grain, vignette, core);
+  root.append(canvas, grain, vignette, core, lbLink);
 
   const field = new Pointillism(canvas, { src: 'assets/flower-source.jpg', step: 4, dim: 1.15, sat: 0.62 });
   window.__pf = field; // debug handle (harmless)
