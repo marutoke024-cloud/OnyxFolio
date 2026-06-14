@@ -8,12 +8,13 @@ import {
 } from '../storage/db.js';
 import { fileToImageRecord } from '../lib/image.js';
 import { imageFileFromPasteEvent, readClipboardImageFile } from '../lib/clipboard.js';
+import { isPrivate } from '../lib/private.js';
 
 const LAYOUTS = [
   { id: 'cover', name: 'Cover' }, { id: 'full', name: 'Full' }, { id: 'spread', name: 'Spread' },
   { id: 'split', name: 'Split' }, { id: 'splitR', name: 'Split ↑' },
   { id: 'split82', name: 'Wide 8:2' }, { id: 'split82R', name: 'Wide 8:2 ↑' },
-  { id: 'caption', name: 'Caption' }, { id: 'duo', name: 'Duo' }, { id: 'text', name: 'Text' },
+  { id: 'caption', name: 'Caption' }, { id: 'duo', name: 'Duo' }, { id: 'trio', name: 'Trio' }, { id: 'text', name: 'Text' },
 ];
 
 export async function mount(root, params, ctx) {
@@ -42,7 +43,9 @@ async function openList(root, ctx) {
     grid.append(h('div.pf-card.pf-new', { onclick: createNew }, [
       h('div.cover', {}, [ico('plus'), h('span', { text: 'New portfolio' })]),
     ]));
-    const list = await getPortfolios();
+    const all = await getPortfolios();
+    // normal → only non-private lookbooks; private mode → only the private ones
+    const list = all.filter((p) => isPrivate() ? p.private : !p.private);
     for (const p of list) grid.append(await cardEl(p));
   }
 
@@ -56,7 +59,7 @@ async function openList(root, ctx) {
     if (coverId) { const im = await getImage(coverId); if (im) src = blobURL('thumb-' + coverId, im.thumb); }
     const title = p.pages?.[0]?.texts?.title || p.name;
     const card = h('div.pf-card', {}, [
-      h('div.cover', {}, [src ? h('img', { src, alt: '' }) : null, h('div.spine'), h('div.cv-title.jp', { text: title })]),
+      h('div.cover', {}, [src ? h('img', { src, alt: '' }) : null, h('div.spine'), h('div.cv-title.jp', { text: title }), p.private ? h('div.pf-private', { text: '♥', title: 'Private' }) : null]),
       h('div.pf-name.jp', { text: p.name }),
       h('div.pf-meta', { text: `${p.pages?.length || 0} pages` }),
     ]);
@@ -78,7 +81,8 @@ async function openList(root, ctx) {
   }
 
   await render();
-  return {};
+  window.addEventListener('onyx-private-change', render);
+  return { destroy() { window.removeEventListener('onyx-private-change', render); } };
 }
 
 function blankPortfolio(name) {
@@ -131,7 +135,7 @@ async function openEditor(root, id, ctx) {
   const textBtn = h('button.icon-btn', { title: 'Add text over the image', onclick: () => addOverlay() }, [ico('text')]);
   const styleBtn = h('button.icon-btn', { title: 'Text style (size · colour · opacity · border)', onclick: () => openOverlayStyle(selectedOverlay) }, [ico('sliders')]);
   const textbgBtn = h('button.icon-btn', { title: 'Text panel colour', onclick: (e) => openTextBgPanel(e.currentTarget) }, [ico('palette')]);
-  const pageBtn = h('button.icon-btn', { title: 'Select which page (left / right of the spread)', onclick: () => togglePageSelect() }, [ico('pages')]);
+  const pageBtn = h('button.icon-btn', { title: 'Select an image section (then zoom / reframe / change just that one)', onclick: () => cycleSection() }, [ico('pages')]);
   const bgBtn = h('button.icon-btn', { title: 'Page tone', onclick: () => cycleBg() }, [ico('image')]);
   const moveBtn = h('button.icon-btn', { title: 'Reframe image (drag inside the slot)', onclick: () => toggleMove() }, [ico('move')]);
   const zoomInBtn = h('button.icon-btn', { title: 'Zoom the image in', onclick: () => adjustZoom(1.15) }, [ico('zoomIn')]);
@@ -145,6 +149,8 @@ async function openEditor(root, id, ctx) {
   ]);
   // viewing mode is the default — a small floating toggle reveals the editor chrome
   const viewToggle = h('button.icon-btn.pf-viewtoggle', { title: 'Toggle edit mode', onclick: () => toggleView() }, [ico('edit')]);
+  // back to the lookbook list (always reachable, incl. chrome-free viewing mode)
+  const backToList = h('button.icon-btn.pf-backbtn', { title: 'Back to lookbooks', onclick: () => ctx.nav('/portfolio') }, [ico('back')]);
 
   const topbar = buildTopbar({
     crumbs: [
@@ -153,12 +159,12 @@ async function openEditor(root, id, ctx) {
       { label: portfolio.name, jp: true, onClick: renamePortfolio },
     ],
   });
-  root.append(editor, bar, topbar, viewToggle);
+  root.append(editor, bar, topbar, viewToggle, backToList);
   const titleSpan = topbar.querySelector('.crumbs .cur');
 
   // --- state ---
   let mode = 'spread', cur = 0, nUnits = 1, leaves = [], activePageIdx = 0, moveMode = false;
-  let viewMode = true, selectedOverlay = null, selectSide = 'right';
+  let viewMode = true, selectedOverlay = null, selectedSlot = null;
 
   // --- persistence ---
   let saveT = 0;
@@ -267,6 +273,9 @@ async function openEditor(root, id, ctx) {
         break;
       case 'duo':
         el.append(slotEl(page, 'a'), slotEl(page, 'b'));
+        break;
+      case 'trio':
+        el.append(slotEl(page, 'a'), slotEl(page, 'b'), slotEl(page, 'c'));
         break;
       case 'split':
       case 'splitR':
@@ -418,15 +427,17 @@ async function openEditor(root, id, ctx) {
       f.querySelector('.page')?.classList.add('editing');
       qsa('.txt', f).forEach((t) => (t.contentEditable = 'true'));
     });
-    // choose which page edits target — left or right of the open spread
-    qsa('.page.sel-page', book).forEach((p) => p.classList.remove('sel-page'));
-    const hasLeft = mode === 'spread' && cur > 0 && !!leaves[cur - 1];
-    activePageIdx = mode !== 'spread' ? cur
-      : (hasLeft && selectSide === 'left') ? 2 * cur - 1 : 2 * cur;
-    if (hasLeft) {
-      const selFace = live.find((f) => f && f._page && f._page._idx === activePageIdx);
-      selFace?.querySelector('.page')?.classList.add('sel-page');
+    // default target = the right page of the spread (or the single page)
+    activePageIdx = mode === 'spread' ? 2 * cur : cur;
+    // keep the section selection if it is still on the open spread, else drop it
+    const liveIdxs = live.filter(Boolean).map((f) => f._page && f._page._idx);
+    if (selectedSlot && liveIdxs.includes(selectedSlot.idx)) {
+      activePageIdx = selectedSlot.idx;
+    } else if (selectedSlot) {
+      selectedSlot = null;
+      pageBtn.classList.remove('active');
     }
+    applySectionHighlight();
   }
 
   // --- navigation ---
@@ -589,27 +600,59 @@ async function openEditor(root, id, ctx) {
     book.classList.toggle('move-mode', moveMode);
     toast(moveMode ? 'Move mode: drag a picture to reframe it.' : 'Move mode off.');
   }
-  // zoom the picture(s) on the active page in / out (in addition to reframing)
+  // zoom the selected section's picture (or every picture on the active page) in / out
   function adjustZoom(factor) {
-    const page = pages[activePageIdx];
-    const keys = page && page.slots ? Object.keys(page.slots).filter((k) => page.slots[k]) : [];
-    if (!keys.length) { toast('Add an image to this page first.'); return; }
+    let page, keys;
+    if (selectedSlot) {
+      page = pages[selectedSlot.idx];
+      keys = page && page.slots && page.slots[selectedSlot.key] ? [selectedSlot.key] : [];
+    } else {
+      page = pages[activePageIdx];
+      keys = page && page.slots ? Object.keys(page.slots).filter((k) => page.slots[k]) : [];
+    }
+    if (!keys.length) { toast(selectedSlot ? 'Add an image to that section first.' : 'Add an image to this page first.'); return; }
     page.zoom = page.zoom || {};
     keys.forEach((k) => { page.zoom[k] = Math.max(0.5, Math.min(4, (page.zoom[k] || 1) * factor)); });
     scheduleSave(); rebuild(true);
   }
-  // pick which page of the open spread the edit buttons target (left or right)
-  function togglePageSelect() {
-    if (mode !== 'spread' || cur === 0) { toast('Open a two-page spread to choose a side.'); return; }
-    selectSide = selectSide === 'right' ? 'left' : 'right';
-    pageBtn.classList.toggle('active', selectSide === 'left');
-    setLive();
-    toast(`Editing the ${selectSide} page.`);
+  // step through the individual image sections of the open spread; the chosen one
+  // is highlighted and becomes the target for zoom / reframe / layout / delete
+  function cycleSection() {
+    const slots = qsa('.face.live .slot[data-key]', book).map((el) => ({ key: el.dataset.key, idx: el.closest('.face')?._page?._idx }));
+    if (!slots.length) { toast('No image sections on the open pages.'); return; }
+    let i = selectedSlot ? slots.findIndex((s) => s.idx === selectedSlot.idx && s.key === selectedSlot.key) : -1;
+    i = (i + 1) % slots.length;
+    selectedSlot = { idx: slots[i].idx, key: slots[i].key };
+    activePageIdx = selectedSlot.idx;
+    pageBtn.classList.add('active');
+    applySectionHighlight();
+    toast(`Section ${i + 1} / ${slots.length} selected.`);
   }
-  async function renamePortfolio() {
-    const n = await promptModal({ title: 'Rename portfolio', value: portfolio.name, jp: true });
-    if (n === null) return;
-    portfolio.name = n || 'Untitled'; titleSpan.textContent = portfolio.name; scheduleSave();
+  function applySectionHighlight() {
+    qsa('.slot.sel-slot', book).forEach((s) => s.classList.remove('sel-slot'));
+    if (!selectedSlot) return;
+    qsa('.face.live .slot[data-key]', book).forEach((el) => {
+      if (el.dataset.key === selectedSlot.key && el.closest('.face')?._page?._idx === selectedSlot.idx) el.classList.add('sel-slot');
+    });
+  }
+  function renamePortfolio() {
+    const nameIn = h('input.field.jp', { value: portfolio.name, placeholder: 'Untitled', spellcheck: false });
+    const privToggle = h('button.toggle' + (portfolio.private ? '.on' : ''), {
+      type: 'button', role: 'switch', 'aria-checked': String(!!portfolio.private), title: 'Toggle private',
+      onclick: () => { portfolio.private = !portfolio.private; privToggle.classList.toggle('on', !!portfolio.private); privToggle.setAttribute('aria-checked', String(!!portfolio.private)); },
+    }, [h('span.knob')]);
+    const save = () => { portfolio.name = nameIn.value.trim() || 'Untitled'; titleSpan.textContent = portfolio.name; scheduleSave(); closeModal(); };
+    nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+    openModal(h('div.modal', {}, [
+      h('h2.display', { text: 'Lookbook settings' }),
+      h('div.row', {}, [h('label', { text: 'Title' }), nameIn]),
+      h('div.row.toggle-row', {}, [h('label', { text: 'Private (shown only in private mode)' }), privToggle]),
+      h('div.modal-actions', {}, [
+        h('button.btn.btn-ghost', { text: 'Cancel', onclick: () => closeModal() }),
+        h('button.btn.btn-accent', { text: 'Save', onclick: save }),
+      ]),
+    ]));
+    setTimeout(() => nameIn.focus(), 120);
   }
 
   // --- layout / add menu ---
@@ -617,7 +660,7 @@ async function openEditor(root, id, ctx) {
   function miniFor(idn) {
     const I = (g, img) => h('i', { style: { flex: String(g), background: 'var(--ink-3)', opacity: img ? '.85' : '.4', borderRadius: '1px', minHeight: img ? '0' : '3px', maxHeight: img ? 'none' : '3px' } });
     const map = {
-      full: [I(1, true)], duo: [I(1, true), I(1, true)], spread: [I(1, true)],
+      full: [I(1, true)], duo: [I(1, true), I(1, true)], trio: [I(1, true), I(1, true), I(1, true)], spread: [I(1, true)],
       split: [I(2, true), I(0, false), I(0, false)], splitR: [I(0, false), I(0, false), I(2, true)],
       split82: [I(4, true), I(0, false)], split82R: [I(0, false), I(4, true)],
       caption: [I(2, true), I(0, false)], text: [I(0, false), I(0, false), I(0, false)],

@@ -5,19 +5,10 @@ const KEY = 'onyx-private';
 export function isPrivate() { return localStorage.getItem(KEY) === '1'; }
 
 export function applyPrivate() {
-  const on = isPrivate();
-  document.body.classList.toggle('is-private', on);
-  let badge = document.getElementById('heart-badge');
-  if (on && !badge) {
-    badge = document.createElement('div');
-    badge.id = 'heart-badge';
-    badge.textContent = '♥';
-    badge.setAttribute('title', 'Private mode is on');
-    badge.setAttribute('aria-label', 'Private mode on');
-    document.body.append(badge);
-  } else if (!on && badge) {
-    badge.remove();
-  }
+  document.body.classList.toggle('is-private', isPrivate());
+  // (the top-centre ♥ badge was removed by request)
+  const badge = document.getElementById('heart-badge');
+  if (badge) badge.remove();
 }
 
 export function setPrivate(v) {

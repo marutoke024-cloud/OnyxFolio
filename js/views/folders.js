@@ -202,7 +202,8 @@ export async function mount(root, params, ctx) {
   }
   async function render() {
     folders = await getFolders();
-    lastData = isPrivate() ? folders : folders.filter((f) => !f.private);
+    // normal → only non-private; private mode → only the private ones
+    lastData = folders.filter((f) => isPrivate() ? f.private : !f.private);
     buildPlane(lastData);
   }
 
