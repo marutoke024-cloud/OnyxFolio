@@ -51,7 +51,9 @@
   /* icons are background-free PNGs → the shadow follows the folder shape so it floats */
   filter: drop-shadow(0 9px 12px rgba(0,0,0,0.55));
 }
+.folder-thumb { position: relative; }
 .folder-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; filter: contrast(1.06) saturate(1.05); }
+.folder-private { position: absolute; top: 4px; right: 8px; z-index: 2; color: #fff; font-size: 13px; line-height: 1; text-shadow: 0 1px 3px rgba(0,0,0,0.85); filter: drop-shadow(0 0 3px rgba(255,255,255,0.35)); pointer-events: none; }
 .folder:hover .folder-thumb { transform: translateY(-7px) scale(1.05); filter: drop-shadow(0 16px 20px rgba(0,0,0,0.7)); }
 
 .folder-name {

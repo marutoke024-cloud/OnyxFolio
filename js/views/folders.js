@@ -4,6 +4,7 @@ import { ico } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import { getFolders, addFolder, updateFolder, deleteFolder, getAllImages } from '../storage/db.js';
 import { FOLDER_DESIGNS, seedDesigns, SEED_EXCLUDE } from '../lib/folderDesigns.js';
+import { isPrivate } from '../lib/private.js';
 
 export async function mount(root, params, ctx) {
   if (isTouch) root.classList.add('is-touch');
@@ -57,7 +58,10 @@ export async function mount(root, params, ctx) {
 
   function folderCard(f, i) {
     return h('div.folder', { dataset: { id: f.id } }, [
-      h('div.folder-thumb', {}, [h('img', { src: 'assets/folders/' + iconFile(f, i), alt: '', loading: 'lazy', draggable: false })]),
+      h('div.folder-thumb', {}, [
+        h('img', { src: 'assets/folders/' + iconFile(f, i), alt: '', loading: 'lazy', draggable: false }),
+        f.private ? h('span.folder-private', { text: '♥', title: 'Private' }) : null,
+      ]),
       h('div.folder-name.jp', { text: f.name }),
     ]);
   }
@@ -160,8 +164,10 @@ export async function mount(root, params, ctx) {
   function openFolderEdit(id) {
     const f = folders.find((x) => x.id === id);
     if (!f) return;
+    let priv = !!f.private;
     const input = h('input.field.jp', { value: f.name || '', placeholder: 'Untitled', spellcheck: false });
-    const save = () => { closeModal(); updateFolder(id, { name: input.value.trim() || 'Untitled' }).then(render); };
+    const privToggle = h('button.toggle' + (priv ? '.on' : ''), { type: 'button', title: 'Private folder', onclick: () => { priv = !priv; privToggle.classList.toggle('on', priv); } }, [h('span.knob')]);
+    const save = () => { closeModal(); updateFolder(id, { name: input.value.trim() || 'Untitled', private: priv }).then(render); };
     const del = async () => {
       closeModal();
       const ok = await confirmModal({ title: 'Delete folder?', message: `“${f.name || 'This folder'}” and its images will be removed from this device.`, confirmText: 'Delete', danger: true });
@@ -169,8 +175,9 @@ export async function mount(root, params, ctx) {
     };
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
     const modal = h('div.modal', {}, [
-      h('h2.display', { text: 'Rename folder' }),
+      h('h2.display', { text: 'Folder' }),
       h('div.row', {}, [h('label', { text: 'Name' }), input]),
+      h('div.row.toggle-row', {}, [h('label', { text: 'Private — hidden unless private mode is on' }), privToggle]),
       h('div.modal-actions', { style: { justifyContent: 'space-between' } }, [
         h('button.btn.btn-danger.btn-with-ico', { onclick: del }, [ico('trash'), h('span', { text: 'Delete' })]),
         h('div', { style: { display: 'flex', gap: '10px' } }, [
@@ -195,8 +202,8 @@ export async function mount(root, params, ctx) {
   }
   async function render() {
     folders = await getFolders();
-    lastData = folders;
-    buildPlane(folders);
+    lastData = isPrivate() ? folders : folders.filter((f) => !f.private);
+    buildPlane(lastData);
   }
 
   // --- lifecycle ---
@@ -204,6 +211,8 @@ export async function mount(root, params, ctx) {
   document.addEventListener('visibilitychange', onVis);
   let rT; const onResize = () => { clearTimeout(rT); rT = setTimeout(() => lastData.length && buildPlane(lastData), 220); };
   window.addEventListener('resize', onResize);
+  const onPriv = () => render();
+  window.addEventListener('onyx-private-change', onPriv);
 
   // debug/verification handle (harmless)
   window.__fld = {
@@ -218,6 +227,7 @@ export async function mount(root, params, ctx) {
       running = false; stopLoop();
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('onyx-private-change', onPriv);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     },

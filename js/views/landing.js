@@ -16,7 +16,8 @@ export async function mount(root, params, ctx) {
     enterBtn,
   ]);
 
-  root.append(canvas, grain, vignette, core);
+  const lbLink = h('button.landing-lblink.reveal', { type: 'button', style: { transitionDelay: '.85s' }, text: 'Look Books', 'aria-label': 'Open lookbooks', onclick: () => ctx.nav('/portfolio') });
+  root.append(canvas, grain, vignette, core, lbLink);
 
   const field = new Pointillism(canvas, { src: 'assets/flower-source.jpg', step: 4, dim: 1.15, sat: 0.62 });
   window.__pf = field; // debug handle (harmless)

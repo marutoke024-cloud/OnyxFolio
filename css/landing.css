@@ -76,6 +76,15 @@
 }
 .enter-hint svg { width: 13px; height: 13px; opacity: .8; }
 
+/* subtle bottom-centre link to the lookbooks (plain text, not a button) */
+.landing-lblink {
+  position: absolute; bottom: clamp(18px, 4vh, 40px); left: 50%; transform: translateX(-50%);
+  z-index: 3; background: none; border: none; cursor: pointer;
+  font-family: var(--font-ui); font-size: 11px; letter-spacing: 0.34em; text-transform: uppercase;
+  color: var(--ink-3); transition: color 0.4s var(--ease-out); -webkit-tap-highlight-color: transparent;
+}
+.landing-lblink:hover { color: var(--ink-1); }
+
 /* gentle fade-up reveal (no overflow clipping) */
 .reveal { opacity: 0; transform: translateY(12px); transition: opacity 1.1s var(--ease-out), transform 1.1s var(--ease-out); }
 .reveal.in { opacity: 1; transform: none; }

@@ -33,7 +33,8 @@ export const FOLDER_DESIGNS = NAMES.map((name, i) => ({
 export const SEED_EXCLUDE = [
   'Band Tee', 'Dried Wild Mushrooms', 'Farm-Fresh Eggs', 'Dried Kitchen Herbs',
   'Tailoring Tools', 'Dome-Covered Mini', 'Antique Box', 'Knit Beanie',
-  'Aged Balsamic Vinegar',
+  'Aged Balsamic Vinegar', 'Smoked Salmon Slices', 'Homemade Preserves',
+  'Bean-to-Bar Chocolate', 'Cured Prosciutto Board',
 ];
 
 export function seedDesigns(count = 30) {

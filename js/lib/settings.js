@@ -4,8 +4,14 @@ import { ico } from './icons.js';
 import {
   getConfig, setConfig, clearConfig, parseConfig, isConfigured, pushAll, pullAll,
 } from '../storage/sync.js';
+import { isPrivate, setPrivate } from './private.js';
 
 export function openSettings() {
+  const privToggle = h('button.toggle' + (isPrivate() ? '.on' : ''), {
+    type: 'button', role: 'switch', 'aria-checked': String(isPrivate()), title: 'Toggle private mode',
+    onclick: () => { const v = !isPrivate(); setPrivate(v); privToggle.classList.toggle('on', v); privToggle.setAttribute('aria-checked', String(v)); },
+  }, [h('span.knob')]);
+
   const status = h('div.sync-status');
   const renderStatus = () => {
     const ok = isConfigured();
@@ -93,6 +99,11 @@ export function openSettings() {
       h('span.mono-label', { text: 'Manual sync' }),
       h('div.sync-grid', {}, [ upBtn, downBtn ]),
       progress,
+    ]),
+
+    h('div.modal-section', {}, [
+      h('div.section-head', {}, [h('span.mono-label', { text: 'Private mode' }), privToggle]),
+      h('div.note', { html: 'Hide folders you mark private. A white <em>♥</em> shows in the header while it’s on. Per-device toggle — not a password.' }),
     ]),
 
     h('div.modal-actions', {}, [

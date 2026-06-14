@@ -1,5 +1,6 @@
 // Onyx Folio — app shell + hash router with cross-fading views.
 import { qs } from './lib/dom.js';
+import { applyPrivate } from './lib/private.js';
 
 const app = qs('#app');
 
@@ -83,3 +84,5 @@ if (document.readyState !== 'loading') handleRoute();
 if ('serviceWorker' in navigator && location.hostname.endsWith('github.io')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+applyPrivate();   // restore the ♥ badge / private-mode body class on load

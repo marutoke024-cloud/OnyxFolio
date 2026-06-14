@@ -1,13 +1,14 @@
-// Album view — an image cloud: works lie freely in the centre, kept upright and
-// packed with minimal overlap (spreading outward as the count grows), drifting
-// gently but never past the frame. A theme floats its matches forward.
-import { h, isTouch, toast, confirmModal, qsa, rand } from '../lib/dom.js';
+// Album view — an image cloud. Random = a radial, overlapping spiral from the
+// centre; a theme lays its matches out in a non-overlapping grid. Tap a work to
+// view it large; long-press (or the edit button) to rename / tag it.
+import { h, isTouch, toast, confirmModal, openModal, closeModal, qsa, rand } from '../lib/dom.js';
 import { ico, icons } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import { getFolder, getImages, addImage, updateImage, deleteImage, blobURL, revokeURL } from '../storage/db.js';
 import { fileToImageRecord } from '../lib/image.js';
 
-const BASE_W = 320; // element width; on-screen size is BASE_W * scale
+const BASE_W = 320;
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
 export async function mount(root, params, ctx) {
   const folderId = params.folderId;
@@ -35,12 +36,14 @@ export async function mount(root, params, ctx) {
 
   let running = true, raf = 0, last = 0, t = 0, lastW = 0, lastH = 0;
 
+  const allTagNames = () => { const s = new Set(); images.forEach((im) => (im.tags || []).forEach((tg) => s.add(tg))); return [...s]; };
+
   function emptyState() {
     return h('div.album-empty', {}, [
       h('button.drop', { type: 'button', onclick: () => fileInput.click() }, [
         ico('image'),
         h('h3.display', { text: 'This folder is empty' }),
-        h('p', { text: 'Drop images here, or tap to choose photos. Tag them and they’ll float forward on demand.' }),
+        h('p', { text: 'Drop images here, or tap to choose photos. Tap a work to view it, long-press to tag it.' }),
         h('span.btn.btn-accent', { text: 'Choose images' }),
       ]),
     ]);
@@ -67,34 +70,61 @@ export async function mount(root, params, ctx) {
         cx: W / 2, cy: H / 2, cs: 0.12, copacity: 0,
         tx: W / 2, ty: H / 2, ts: 0.3, topacity: 1, tz: 2,
       };
+      // tap → view large; long-press → edit metadata
+      let timer = null, moved = false, px = 0, py = 0;
       el.addEventListener('pointerenter', () => { s.hover = true; el.classList.add('lift'); });
       el.addEventListener('pointerleave', () => { s.hover = false; el.classList.remove('lift'); });
-      el.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(i); });
+      el.addEventListener('pointerdown', (e) => {
+        moved = false; px = e.clientX; py = e.clientY;
+        timer = setTimeout(() => { timer = null; openEditModal(i); }, 450);
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (Math.abs(e.clientX - px) > 8 || Math.abs(e.clientY - py) > 8) { moved = true; clearTimeout(timer); timer = null; }
+      });
+      el.addEventListener('pointerup', (e) => {
+        e.stopPropagation();
+        if (timer) { clearTimeout(timer); timer = null; if (!moved) openLightbox(i); }
+      });
+      el.addEventListener('pointercancel', () => { clearTimeout(timer); timer = null; });
+      el.addEventListener('contextmenu', (e) => e.preventDefault());
       items.push(s);
     });
     applyFilter();
     startLoop();
   }
 
-  // phyllotaxis (sunflower) spiral from the centre → radial, large, edges overlapping,
-  // spreading outward as the count grows. Fit so the whole spiral stays in frame.
-  const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+  // Random → radial overlapping spiral from the centre
   function placeRadial(list, W, H) {
     const N = list.length; if (!N) return;
     const cx0 = W / 2, cy0 = H / 2, minWH = Math.min(W, H);
-    let sizePx = minWH * 0.36;       // big base size
-    let SP = sizePx * 0.5;           // spacing < size → edges overlap
+    let sizePx = minWH * 0.36, SP = sizePx * 0.5;
     const maxR = SP * Math.sqrt(Math.max(0, N - 0.6));
     const need = maxR + sizePx * 0.5, avail = minWH * 0.5;
     if (need > avail) { const k = avail / need; sizePx *= k; SP *= k; }
-    const ex = Math.min(1.5, W / minWH);   // gentle horizontal spread on wide frames
+    const ex = Math.min(1.5, W / minWH);
     list.forEach((s, i) => {
-      const ang = i * GOLDEN;
-      const r = i === 0 ? 0 : SP * Math.sqrt(i + 0.2);
+      const ang = i * GOLDEN, r = i === 0 ? 0 : SP * Math.sqrt(i + 0.2);
       s.tx = cx0 + r * Math.cos(ang) * ex;
       s.ty = cy0 + r * Math.sin(ang);
       s.ts = sizePx / s.w0;
-      s.tz = 60 + (N - i);           // centre items sit on top
+      s.tz = 60 + (N - i);
+    });
+  }
+  // theme → centred grid, no overlap
+  function placeGrid(list, W, H) {
+    const N = list.length; if (!N) return;
+    const cols = Math.max(1, Math.round(Math.sqrt(N * (W / H))));
+    const rows = Math.ceil(N / cols);
+    const cellW = (W * 0.92) / cols, cellH = (H * 0.9) / rows;
+    const top = (H - rows * cellH) / 2;
+    list.forEach((s, i) => {
+      const row = Math.floor(i / cols), col = i % cols;
+      const inRow = Math.min(cols, N - row * cols);
+      const left = (W - inRow * cellW) / 2;
+      s.tx = left + col * cellW + cellW / 2;
+      s.ty = top + row * cellH + cellH / 2;
+      s.ts = Math.min((cellW * 0.84) / s.w0, (cellH * 0.84) / s.ih0);
+      s.tz = 300 + i;
     });
   }
 
@@ -107,8 +137,8 @@ export async function mount(root, params, ctx) {
     }
     const match = [], other = [];
     items.forEach((s, i) => ((images[i].tags || []).includes(activeTag) ? match : other).push(s));
-    placeRadial(match, W, H);
-    match.forEach((s) => { s.topacity = 1; s.el.classList.remove('recede'); s.tz += 200; });
+    placeGrid(match, W, H);
+    match.forEach((s) => { s.topacity = 1; s.el.classList.remove('recede'); });
     other.forEach((s, k) => {
       const ang = (k / Math.max(1, other.length)) * Math.PI * 2;
       s.tx = W / 2 + Math.cos(ang) * W * 0.46;
@@ -131,9 +161,8 @@ export async function mount(root, params, ctx) {
       let scale = s.cs, z = s.tz;
       if (s.hover) { scale = s.cs * 1.14; z = 9999; }
       const hw = s.w0 * scale / 2, hh = s.ih0 * scale / 2;
-      let x = s.cx + dx, y = s.cy + dy;
-      x = Math.max(hw + 2, Math.min(W - hw - 2, x));   // never past the frame
-      y = Math.max(hh + 2, Math.min(H - hh - 2, y));
+      let x = Math.max(hw + 2, Math.min(W - hw - 2, s.cx + dx));
+      let y = Math.max(hh + 2, Math.min(H - hh - 2, s.cy + dy));
       s.el.style.transform = `translate3d(${(x - s.w0 / 2).toFixed(1)}px, ${(y - s.ih0 / 2).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
       s.el.style.opacity = s.copacity.toFixed(3);
       s.el.style.zIndex = String(z);
@@ -143,7 +172,6 @@ export async function mount(root, params, ctx) {
   function startLoop() { if (running && !document.hidden && !raf && items.length) { last = performance.now(); raf = requestAnimationFrame(loop); } }
   function stopLoop() { cancelAnimationFrame(raf); raf = 0; }
 
-  // click an empty patch → revert (deselect the active theme)
   cloud.addEventListener('click', (e) => { if (e.target === cloud && activeTag) setTag(null); });
 
   // --- tag rail ---
@@ -160,7 +188,7 @@ export async function mount(root, params, ctx) {
     ]));
     const tags = allTags();
     if (tags.length) rail.append(h('div.rail-sep'));
-    if (!tags.length) rail.append(h('div.rail-empty', { text: 'No tags yet. Open an image to tag it — themes appear here to float matching works forward.' }));
+    if (!tags.length) rail.append(h('div.rail-empty', { text: 'No tags yet. Long-press a work to tag it — themes appear here.' }));
     tags.forEach(([tg, n]) => rail.append(h('button.rail-tag' + (activeTag === tg ? '.active' : ''), { onclick: () => setTag(tg) }, [
       h('span.jp', { text: tg }), h('span.count', { text: String(n) }),
     ])));
@@ -189,79 +217,85 @@ export async function mount(root, params, ctx) {
   cloud.addEventListener('dragleave', (e) => { if (!cloud.contains(e.relatedTarget)) cloud.classList.remove('drag-over'); });
   cloud.addEventListener('drop', (e) => { e.preventDefault(); cloud.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
 
-  // --- lightbox ---
+  // --- edit modal (long-press / edit button): rename + tags (with suggestions) ---
+  function openEditModal(i) {
+    const im = images[i]; if (!im) return;
+    const nameInput = h('input.field.jp', { value: im.name || '', placeholder: 'Untitled', spellcheck: false });
+    const chips = h('div.lb-tags');
+    const tagInput = h('input.field.jp', { placeholder: 'Add or pick a tag…', spellcheck: false, list: 'onyx-tag-suggest' });
+    const datalist = h('datalist', { id: 'onyx-tag-suggest' }, allTagNames().map((tg) => h('option', { value: tg })));
+    const renderChips = () => {
+      chips.innerHTML = '';
+      (im.tags || []).forEach((tg) => chips.append(h('span.chip.jp', {}, [
+        h('span', { text: tg }),
+        h('button', { title: 'Remove', html: icons.close, onclick: () => { im.tags = (im.tags || []).filter((x) => x !== tg); updateImage(im.id, { tags: im.tags }); renderChips(); renderRail(); applyFilter(); } }),
+      ])));
+      if (!(im.tags || []).length) chips.append(h('span.rail-empty', { text: 'No tags yet.' }));
+    };
+    const addTag = () => {
+      const v = tagInput.value.trim(); if (!v) return;
+      im.tags = im.tags || [];
+      if (!im.tags.includes(v)) { im.tags.push(v); updateImage(im.id, { tags: im.tags }); renderChips(); renderRail(); applyFilter(); }
+      tagInput.value = '';
+    };
+    tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
+    tagInput.addEventListener('change', () => { if (tagInput.value.trim()) addTag(); });  // picking a suggestion
+    renderChips();
+    const save = () => { closeModal(); im.name = nameInput.value.trim(); updateImage(im.id, { name: im.name }); };
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+    const del = async () => {
+      closeModal();
+      const ok = await confirmModal({ title: 'Delete image?', message: 'This removes it from the folder on this device.', confirmText: 'Delete', danger: true });
+      if (ok) { await deleteImage(im.id); revokeURL('thumb-' + im.id); revokeURL('full-' + im.id); await reload(); }
+    };
+    const modal = h('div.modal', {}, [
+      h('h2.display', { text: 'Edit image' }),
+      h('div.row', {}, [h('label', { text: 'Name' }), nameInput]),
+      h('div.row', {}, [
+        h('label', { text: 'Tags' }), chips,
+        h('div.lb-tag-add', {}, [tagInput, h('button.icon-btn', { onclick: addTag, title: 'Add tag' }, [ico('plus')])]), datalist,
+      ]),
+      h('div.modal-actions', { style: { justifyContent: 'space-between' } }, [
+        h('button.btn.btn-danger.btn-with-ico', { onclick: del }, [ico('trash'), h('span', { text: 'Delete' })]),
+        h('div', { style: { display: 'flex', gap: '10px' } }, [
+          h('button.btn.btn-ghost', { text: 'Close', onclick: () => closeModal() }),
+          h('button.btn.btn-accent', { text: 'Save', onclick: save }),
+        ]),
+      ]),
+    ]);
+    openModal(modal);
+    setTimeout(() => nameInput.focus(), 120);
+  }
+
+  // --- lightbox (view only) ---
   let lbIndex = -1;
   const lbImg = h('img', { alt: '' });
-  const lbName = h('input.lb-name.jp', { spellcheck: false, placeholder: 'Untitled' });
-  const lbTags = h('div.lb-tags');
-  const lbTagInput = h('input.field.jp', { placeholder: 'Add a tag…', spellcheck: false });
-  const lbMeta = h('div.lb-meta');
   const lbClose = h('button.icon-btn.lb-close', { onclick: closeLightbox }, [ico('close')]);
-
-  const lbAddTag = () => {
-    const v = lbTagInput.value.trim(); if (!v) return;
-    const im = images[lbIndex]; const tags = im.tags || [];
-    if (!tags.includes(v)) { tags.push(v); im.tags = tags; updateImage(im.id, { tags }); renderTagChips(); renderRail(); applyFilter(); }
-    lbTagInput.value = '';
-  };
-  lbTagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') lbAddTag(); });
-
   const lbStage = h('div.lb-stage', {}, [
     h('button.icon-btn.lb-nav.prev', { onclick: () => step(-1) }, [ico('back')]),
     lbImg,
     h('button.icon-btn.lb-nav.next', { onclick: () => step(1), style: { transform: 'translateY(-50%) scaleX(-1)' } }, [ico('back')]),
   ]);
-  // click the empty backdrop → close
   lbStage.addEventListener('click', (e) => { if (e.target === lbStage) closeLightbox(); });
-
   const lightbox = h('div.lightbox', {}, [
     lbStage,
-    h('div.lb-side', {}, [
-      lbName,
-      h('div', {}, [h('div.lb-field-label', { text: 'Tags' }), lbTags,
-        h('div.lb-tag-add', {}, [lbTagInput, h('button.icon-btn', { onclick: lbAddTag, title: 'Add tag' }, [ico('plus')])]),
-      ]),
-      lbMeta,
-      h('div.lb-actions', {}, [
-        h('button.btn.btn-danger.btn-with-ico', { onclick: deleteCurrent }, [ico('trash'), h('span', { text: 'Delete image' })]),
-      ]),
+    h('div.lb-tools', {}, [
+      h('button.icon-btn', { title: 'Edit', onclick: () => { const i = lbIndex; closeLightbox(); openEditModal(i); } }, [ico('edit')]),
+      h('button.icon-btn', { title: 'Delete', onclick: deleteCurrent }, [ico('trash')]),
     ]),
     lbClose,
   ]);
   document.body.append(lightbox);
 
-  function renderTagChips() {
-    const im = images[lbIndex]; if (!im) return;
-    lbTags.innerHTML = '';
-    (im.tags || []).forEach((tg) => {
-      lbTags.append(h('span.chip.jp', {}, [
-        h('span', { text: tg }),
-        h('button', { title: 'Remove', html: icons.close, onclick: () => {
-          im.tags = (im.tags || []).filter((x) => x !== tg);
-          updateImage(im.id, { tags: im.tags }); renderTagChips(); renderRail(); applyFilter();
-        } }),
-      ]));
-    });
-    if (!(im.tags || []).length) lbTags.append(h('span.rail-empty', { text: 'No tags yet.' }));
-  }
-  function showCurrent() {
-    const im = images[lbIndex]; if (!im) return;
-    lbImg.src = blobURL('full-' + im.id, im.blob || im.thumb);
-    lbName.value = im.name || '';
-    const dims = im.w && im.h ? `${im.w} × ${im.h}` : '';
-    lbMeta.textContent = [dims, new Date(im.createdAt).toLocaleDateString()].filter(Boolean).join('  ·  ');
-    renderTagChips();
-  }
+  function showCurrent() { const im = images[lbIndex]; if (im) lbImg.src = blobURL('full-' + im.id, im.blob || im.thumb); }
   function openLightbox(i) { lbIndex = i; showCurrent(); lightbox.classList.add('in'); document.addEventListener('keydown', lbKeys); }
   function closeLightbox() { lightbox.classList.remove('in'); document.removeEventListener('keydown', lbKeys); }
   function step(d) { if (!images.length) return; lbIndex = (lbIndex + d + images.length) % images.length; showCurrent(); }
   function lbKeys(e) {
-    if (e.target.matches('input,textarea')) { if (e.key === 'Escape') e.target.blur(); return; }
     if (e.key === 'Escape') closeLightbox();
     else if (e.key === 'ArrowLeft') step(-1);
     else if (e.key === 'ArrowRight') step(1);
   }
-  lbName.addEventListener('change', () => { const im = images[lbIndex]; if (im) { im.name = lbName.value.trim(); updateImage(im.id, { name: im.name }); } });
   async function deleteCurrent() {
     const im = images[lbIndex]; if (!im) return;
     const ok = await confirmModal({ title: 'Delete image?', message: 'This removes it from the folder on this device.', confirmText: 'Delete', danger: true });
@@ -283,17 +317,6 @@ export async function mount(root, params, ctx) {
     }, 180);
   });
   ro.observe(cloud);
-
-  function paintAll() {
-    for (const s of items) {
-      s.el.style.transform = `translate3d(${(s.cx - s.w0 / 2).toFixed(1)}px, ${(s.cy - s.ih0 / 2).toFixed(1)}px, 0) scale(${s.cs.toFixed(3)})`;
-      s.el.style.opacity = s.copacity.toFixed(3); s.el.style.zIndex = String(s.tz);
-    }
-  }
-  window.__cloud = {
-    snap() { items.forEach((s) => { s.cx = s.tx; s.cy = s.ty; s.cs = s.ts; s.copacity = s.topacity; }); paintAll(); },
-    state: () => ({ items: items.length, recede: items.filter((s) => s.el.classList.contains('recede')).length, activeTag }),
-  };
 
   await reload();
 
