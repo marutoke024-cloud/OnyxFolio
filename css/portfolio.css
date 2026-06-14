@@ -161,7 +161,7 @@
   paint-order: stroke fill; -webkit-text-stroke: 0 transparent;
   z-index: 6; max-width: 92%; cursor: default;
 }
-.editing .txt-ovl { cursor: move; }
+.editing .txt-ovl { cursor: move; touch-action: none; }
 .txt-ovl:focus { cursor: text; outline: 1px dashed rgba(255,255,255,.55); outline-offset: 5px; }
 
 /* style / colour panels */
@@ -224,7 +224,7 @@
 .pick-cell.sel::after { content: '✓'; position: absolute; inset: 0; background: rgba(205,184,154,.25); color: var(--bg-0); display: grid; place-items: center; }
 
 /* page edge click affordance (turn) — active only in viewing mode */
-.turn-zone { position: absolute; top: 0; bottom: 0; width: 34%; z-index: 45; cursor: pointer; display: none; }
+.turn-zone { position: absolute; top: 0; bottom: 0; width: 34%; z-index: 45; cursor: pointer; display: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .turn-zone.left { left: 0; cursor: w-resize; } .turn-zone.right { right: 0; cursor: e-resize; }
 .pf-editor.viewing .turn-zone { display: block; }
 

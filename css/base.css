@@ -111,6 +111,7 @@ body {
   cursor: pointer;
   transition: border-color .4s var(--ease-out), background .4s var(--ease-out), color .4s var(--ease-out);
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;   /* no 300ms tap delay / double-tap zoom on touch */
   user-select: none;
 }
 .btn:hover { border-color: var(--ink-1); background: var(--bg-3); }
@@ -128,6 +129,8 @@ body {
   color: var(--ink-1); cursor: pointer;
   transition: all .3s var(--ease-out);
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  flex-shrink: 0;
 }
 .icon-btn:hover { color: var(--ink-0); border-color: var(--ink-2); background: var(--bg-3); }
 .icon-btn svg { width: 18px; height: 18px; }
@@ -140,7 +143,7 @@ input.field, textarea.field {
   border-radius: 2px;
   color: var(--ink-0);
   padding: 12px 14px;
-  font-size: 14px;
+  font-size: 16px;   /* >=16px stops iOS Safari from zooming in when a field is focused */
   width: 100%;
   transition: border-color .3s var(--ease-out);
 }
