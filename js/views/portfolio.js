@@ -215,7 +215,12 @@ async function openEditor(root, id, ctx) {
       const img = h('img', { src: getURL(sid), alt: '', draggable: false });
       img.style.objectPosition = `${off.x}% ${off.y}%`;
       const zoom = (page.zoom && page.zoom[key]) || 1;
-      if (zoom !== 1 && page.layout !== 'spread') { img.style.transform = `scale(${zoom})`; img.style.transformOrigin = `${off.x}% ${off.y}%`; }
+      if (zoom !== 1 && page.layout !== 'spread') {
+        img.style.transform = `scale(${zoom})`;
+        img.style.transformOrigin = `${off.x}% ${off.y}%`;
+        // zooming out reveals the whole picture (incl. its own margins) rather than a cropped frame on black
+        if (zoom < 1) img.style.objectFit = 'contain';
+      }
       el.append(img);
     } else {
       el.append(h('div.add-hint', {}, [ico('image'), h('span', { text: 'Add image' })]));
@@ -441,9 +446,29 @@ async function openEditor(root, id, ctx) {
   }
 
   // --- navigation ---
-  function next() { if (cur >= nUnits - 1) return; leaves[cur].classList.add('flipped'); cur++; updateZ(); setLive(); updateInd(); }
-  function prev() { if (cur <= 0) return; cur--; leaves[cur].classList.remove('flipped'); updateZ(); setLive(); updateInd(); }
-  function goTo(pageIdx) { cur = (mode === 'spread') ? Math.min(Math.floor(pageIdx / 2), nUnits - 1) : Math.min(pageIdx, nUnits - 1); applyFlips(); updateZ(); setLive(); updateInd(); }
+  // keep the turning leaf on top for the whole flip, then restore the stack — otherwise
+  // updateZ() drops it behind immediately and the next page flashes into view first.
+  let flipT = 0;
+  function settleZ() { clearTimeout(flipT); flipT = setTimeout(updateZ, 940); }
+  function next() {
+    if (cur >= nUnits - 1) return;
+    const lf = leaves[cur];
+    lf.style.zIndex = '999';
+    lf.classList.add('flipped');
+    cur++;
+    book.classList.toggle('cover-mode', mode === 'spread' && cur === 0);
+    setLive(); updateInd(); settleZ();
+  }
+  function prev() {
+    if (cur <= 0) return;
+    cur--;
+    const lf = leaves[cur];
+    lf.style.zIndex = '999';
+    lf.classList.remove('flipped');
+    book.classList.toggle('cover-mode', mode === 'spread' && cur === 0);
+    setLive(); updateInd(); settleZ();
+  }
+  function goTo(pageIdx) { clearTimeout(flipT); cur = (mode === 'spread') ? Math.min(Math.floor(pageIdx / 2), nUnits - 1) : Math.min(pageIdx, nUnits - 1); applyFlips(); updateZ(); setLive(); updateInd(); }
 
   // --- edit ops ---
   function addPage(layout) {

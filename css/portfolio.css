@@ -84,8 +84,13 @@
 .editing .slot.empty:hover::after { display: none; }
 .book.move-mode .face.live .slot { cursor: move; }
 .book.move-mode .editing .slot:hover::after { display: none; }
-/* the image section that zoom / reframe / layout / delete will act on */
-.slot.sel-slot { box-shadow: inset 0 0 0 3px var(--accent); z-index: 1; }
+/* the image section that zoom / reframe / layout / delete will act on —
+   a pale-yellow frame drawn over the picture (::before, so it isn't hidden by the img) */
+.slot.sel-slot { z-index: 1; }
+.slot.sel-slot::before {
+  content: ''; position: absolute; inset: 0; z-index: 6; pointer-events: none;
+  border: 3px solid #f1de7e; box-shadow: 0 0 0 1px rgba(0,0,0,.45), inset 0 0 10px rgba(241,222,126,0.35);
+}
 
 .pad { padding: clamp(16px, 3.4%, 30px); }
 .txt {
