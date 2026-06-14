@@ -155,6 +155,10 @@
 .lay-opt span { font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); text-align: center; }
 
 /* image picker */
+.pick-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.pick-head h2 { margin: 0; }
+.pick-heart { font-size: 16px; line-height: 1; color: var(--ink-2); flex-shrink: 0; }
+.pick-heart.on { color: #e2a3b3; border-color: rgba(226,163,179,0.5); background: rgba(226,163,179,0.08); }
 .pick-folders { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .pick-folder { font-size: 12px; padding: 7px 12px; border-radius: 20px; border: 1px solid var(--line); color: var(--ink-2); cursor: pointer; }
 .pick-folder.active { border-color: var(--accent); color: var(--accent); }

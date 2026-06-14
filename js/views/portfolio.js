@@ -405,27 +405,42 @@ async function openEditor(root, id, ctx) {
   // --- image picker ---
   async function pickImage(currentId) {
     const folders = await getFolders();
+    const privateIds = new Set(folders.filter((f) => f.private).map((f) => f.id));
     return new Promise((resolve) => {
-      let curFolder = '__all__';   // default: every image in Onyx Folio
+      let curFolder = '__all__';   // default: every non-private image in Onyx Folio
+      let showPrivate = false;
       const grid = h('div.pick-grid');
       const tabs = h('div.pick-folders');
       const done = (v) => { closeModal(); resolve(v); };
+      const visible = (im) => showPrivate || !privateIds.has(im.folderId);
       async function loadGrid() {
         grid.innerHTML = '';
-        const imgs = curFolder === '__all__' ? await getAllImages() : await getImages(curFolder);
-        imgs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        if (!imgs.length) { grid.append(h('div.rail-empty', { text: 'No images yet — add some in a folder first.' })); return; }
+        let imgs = curFolder === '__all__' ? await getAllImages() : await getImages(curFolder);
+        imgs = imgs.filter(visible).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        if (!imgs.length) { grid.append(h('div.rail-empty', { text: 'No images here yet.' })); return; }
         imgs.forEach((im) => grid.append(h('div', { class: 'pick-cell' + (im.id === currentId ? ' sel' : ''), onclick: () => done(im.id) }, [h('img', { src: blobURL('thumb-' + im.id, im.thumb), alt: '' })])));
       }
-      const tabEls = [];
-      const mkTab = (id, label, jp) => {
-        const b = h('button', { class: 'pick-folder' + (id === curFolder ? ' active' : ''), onclick: () => { curFolder = id; tabEls.forEach((c) => c.classList.remove('active')); b.classList.add('active'); loadGrid(); } }, [h(jp ? 'span.jp' : 'span', { text: label })]);
-        tabEls.push(b); return b;
-      };
-      tabs.append(mkTab('__all__', 'All'));
-      folders.forEach((f) => tabs.append(mkTab(f.id, f.name, true)));
+      function buildTabs() {
+        tabs.innerHTML = '';
+        const tabEls = [];
+        const mkTab = (id, label, jp) => {
+          const b = h('button', { class: 'pick-folder' + (id === curFolder ? ' active' : ''), onclick: () => { curFolder = id; tabEls.forEach((c) => c.classList.remove('active')); b.classList.add('active'); loadGrid(); } }, [h(jp ? 'span.jp' : 'span', { text: label })]);
+          tabEls.push(b); return b;
+        };
+        tabs.append(mkTab('__all__', 'All'));
+        folders.filter((f) => showPrivate || !f.private).forEach((f) => tabs.append(mkTab(f.id, f.name, true)));
+      }
+      const heart = privateIds.size
+        ? h('button.icon-btn.pick-heart', { title: 'Show private folders', onclick: () => {
+            showPrivate = !showPrivate;
+            heart.classList.toggle('on', showPrivate);
+            if (!showPrivate && privateIds.has(curFolder)) curFolder = '__all__';
+            buildTabs(); loadGrid();
+          } }, ['♥'])
+        : null;
+      buildTabs();
       openModal(h('div.modal', { style: { width: 'min(720px, 100%)' } }, [
-        h('h2.display', { text: 'Choose an image' }),
+        h('div.pick-head', {}, [h('h2.display', { text: 'Choose an image' }), heart]),
         tabs,
         grid,
         h('div.modal-actions', {}, [
