@@ -1,6 +1,6 @@
 // Image ingestion: decode a File, keep the original blob, derive a thumbnail.
 
-const THUMB_MAX = 720;   // px on the long edge for grid/folder previews
+const THUMB_MAX = 420;   // px on the long edge for grid/folder previews (small = cheap to decode in bulk)
 
 async function decode(file) {
   if ('createImageBitmap' in window) {
