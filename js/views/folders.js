@@ -49,10 +49,10 @@ export async function mount(root, params, ctx) {
   });
   root.append(stage, topbar, hint);
 
-  // --- motion state (gentle upward drift, half the old speed) ---
+  // --- motion state: drag / flick / wheel to scroll, seamless wrap loop kept,
+  //     but NO idle auto-scroll → rAF only runs while a flick is decelerating ---
   let y = 0, blockH = 0, running = false, raf = 0, last = 0;
   let dragging = false, downY = 0, downX = 0, baseY = 0, lastMoveY = 0, lastMoveT = 0, momentum = 0, moved = false, longTimer = 0;
-  const DRIFT = 7;
 
   const iconFile = (f, i) => f.icon || FOLDER_DESIGNS[(f.order ?? i) % FOLDER_DESIGNS.length].file;
 
@@ -100,23 +100,22 @@ export async function mount(root, params, ctx) {
       clone.setAttribute('aria-hidden', 'true');
       plane.append(clone);
     }
-    y = 0; running = true; startLoop();
+    y = 0; running = true; applyTransform();
   }
-  function startLoop() { if (running && !document.hidden && !raf) { last = performance.now(); raf = requestAnimationFrame(loop); } }
   function stopLoop() { cancelAnimationFrame(raf); raf = 0; }
 
   function wrap() { if (blockH) { while (y <= -blockH) y += blockH; while (y > 0) y -= blockH; } }
-  function loop(now) {
-    if (!running || document.hidden) { raf = 0; return; }
+  function applyTransform() { wrap(); plane.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`; }
+  // run a frame loop ONLY while a flick is decelerating; idle = no rAF (no repaint cost)
+  function momentumLoop(now) {
+    if (!running || document.hidden || dragging) { raf = 0; return; }
     const dt = Math.min(50, now - last); last = now;
-    if (!dragging) {
-      y -= DRIFT * dt / 1000;
-      if (momentum) { y += momentum * dt; momentum *= 0.94; if (Math.abs(momentum) < 0.02) momentum = 0; }
-    }
-    wrap();
-    plane.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`;
-    raf = requestAnimationFrame(loop);
+    y += momentum * dt; momentum *= 0.94;
+    applyTransform();
+    if (Math.abs(momentum) < 0.02) { momentum = 0; raf = 0; return; }
+    raf = requestAnimationFrame(momentumLoop);
   }
+  function startMomentum() { if (running && !document.hidden && momentum && !raf) { last = performance.now(); raf = requestAnimationFrame(momentumLoop); } }
 
   // --- pointer: drag to scroll, tap (no move) to open. No pointer-capture so
   //     the tap reliably resolves on desktop (the old click path was swallowed). ---
@@ -125,6 +124,7 @@ export async function mount(root, params, ctx) {
     const dy = e.clientY - downY, dx = e.clientX - downX;
     if (Math.abs(dy) > 6 || Math.abs(dx) > 6) { moved = true; clearTimeout(longTimer); }
     y = baseY + dy;
+    applyTransform();
     const t = performance.now(), gap = t - lastMoveT;
     if (gap > 0) momentum = (e.clientY - lastMoveY) / gap;
     lastMoveY = e.clientY; lastMoveT = t;
@@ -138,6 +138,8 @@ export async function mount(root, params, ctx) {
       const fEl = e.target.closest('.folder');
       if (fEl) ctx.nav('/album/' + fEl.dataset.id);
       momentum = 0;
+    } else {
+      startMomentum();   // let the flick coast and settle, then rAF stops
     }
   }
   stage.addEventListener('pointerdown', (e) => {
@@ -154,7 +156,7 @@ export async function mount(root, params, ctx) {
       }
     }, 480);
   });
-  stage.addEventListener('wheel', (e) => { e.preventDefault(); momentum = 0; y -= e.deltaY * 0.6; }, { passive: false });
+  stage.addEventListener('wheel', (e) => { e.preventDefault(); momentum = 0; y -= e.deltaY * 0.6; applyTransform(); }, { passive: false });
   stage.addEventListener('contextmenu', (e) => {
     const fEl = e.target.closest('.folder');
     if (fEl) { e.preventDefault(); openFolderEdit(fEl.dataset.id); }
@@ -208,7 +210,7 @@ export async function mount(root, params, ctx) {
   }
 
   // --- lifecycle ---
-  const onVis = () => { if (document.hidden) stopLoop(); else startLoop(); };
+  const onVis = () => { if (document.hidden) stopLoop(); };
   document.addEventListener('visibilitychange', onVis);
   let rT; const onResize = () => { clearTimeout(rT); rT = setTimeout(() => lastData.length && buildPlane(lastData), 220); };
   window.addEventListener('resize', onResize);
@@ -217,8 +219,8 @@ export async function mount(root, params, ctx) {
 
   // debug/verification handle (harmless)
   window.__fld = {
-    state: () => ({ raf, y, running, blockH, drift: DRIFT, hidden: document.hidden }),
-    advance: (sec = 1) => { y -= DRIFT * sec; wrap(); plane.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`; return y; },
+    state: () => ({ raf, y, running, blockH, hidden: document.hidden }),
+    advance: (px = 100) => { y -= px; applyTransform(); return y; },
   };
 
   await render();
