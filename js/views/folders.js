@@ -59,7 +59,7 @@ export async function mount(root, params, ctx) {
   function folderCard(f, i) {
     return h('div.folder', { dataset: { id: f.id } }, [
       h('div.folder-thumb', {}, [
-        h('img', { src: 'assets/folders/' + iconFile(f, i), alt: '', loading: 'lazy', draggable: false }),
+        h('img', { src: 'assets/folders/' + iconFile(f, i), alt: '', loading: 'lazy', decoding: 'async', draggable: false }),
         f.private ? h('span.folder-private', { text: '♥', title: 'Private' }) : null,
       ]),
       h('div.folder-name.jp', { text: f.name }),
@@ -129,11 +129,15 @@ export async function mount(root, params, ctx) {
     if (gap > 0) momentum = (e.clientY - lastMoveY) / gap;
     lastMoveY = e.clientY; lastMoveT = t;
   }
-  function onUp(e) {
-    if (!dragging) return;
+  function endDrag() {
     dragging = false; clearTimeout(longTimer); stage.classList.remove('dragging');
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onCancel);
+  }
+  function onUp(e) {
+    if (!dragging) return;
+    endDrag();
     if (!moved) {
       const fEl = e.target.closest('.folder');
       if (fEl) ctx.nav('/album/' + fEl.dataset.id);
@@ -142,6 +146,14 @@ export async function mount(root, params, ctx) {
       startMomentum();   // let the flick coast and settle, then rAF stops
     }
   }
+  // iOS can fire pointercancel mid-gesture (system swipe, scroll hand-off). Without
+  // this the drag stayed "stuck" — listeners attached, dragging never cleared —
+  // which is what made finger-scroll freeze. Settle the flick and let go cleanly.
+  function onCancel() {
+    if (!dragging) return;
+    endDrag();
+    startMomentum();
+  }
   stage.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return;
     dragging = true; moved = false; momentum = 0;
@@ -149,10 +161,11 @@ export async function mount(root, params, ctx) {
     stage.classList.add('dragging');
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
     longTimer = setTimeout(() => {
       if (!moved) {
         const fEl = e.target.closest('.folder');
-        if (fEl) { dragging = false; stage.classList.remove('dragging'); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); openFolderEdit(fEl.dataset.id); }
+        if (fEl) { endDrag(); openFolderEdit(fEl.dataset.id); }
       }
     }, 480);
   });
@@ -233,6 +246,7 @@ export async function mount(root, params, ctx) {
       window.removeEventListener('onyx-private-change', onPriv);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
     },
   };
 }
