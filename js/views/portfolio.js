@@ -59,7 +59,7 @@ async function openList(root, ctx) {
     if (coverId) { const im = await getImage(coverId); if (im) src = blobURL('thumb-' + coverId, im.thumb); }
     const title = p.pages?.[0]?.texts?.title || p.name;
     const card = h('div.pf-card', {}, [
-      h('div.cover', {}, [src ? h('img', { src, alt: '' }) : null, h('div.spine'), h('div.cv-title.jp', { text: title }), p.private ? h('div.pf-private', { text: '♥', title: 'Private' }) : null]),
+      h('div.cover', {}, [src ? h('img', { src, alt: '' }) : null, h('div.spine'), h('div.cv-title.jp', { text: title }), p.private ? h('div.pf-private', { title: 'Locked — shown only in private mode' }, [ico('lock')]) : null]),
       h('div.pf-name.jp', { text: p.name }),
       h('div.pf-meta', { text: `${p.pages?.length || 0} pages` }),
     ]);
@@ -152,6 +152,25 @@ async function openEditor(root, id, ctx) {
   const viewToggle = h('button.icon-btn.pf-viewtoggle', { title: 'Toggle edit mode', onclick: () => toggleView() }, [ico('edit')]);
   // back to the lookbook list (always reachable, incl. chrome-free viewing mode)
   const backToList = h('button.icon-btn.pf-backbtn', { title: 'Back to lookbooks', onclick: () => confirmExit('/portfolio') }, [ico('back')]);
+  // a padlock that locks the lookbook to private mode — always reachable (incl. viewing mode)
+  const lockBtn = h('button.icon-btn.pf-lockbtn', { onclick: () => toggleLock() });
+  function applyLock() {
+    lockBtn.innerHTML = '';
+    lockBtn.append(ico(portfolio.private ? 'lock' : 'lockOpen'));
+    lockBtn.classList.toggle('on', !!portfolio.private);
+    lockBtn.title = portfolio.private
+      ? 'Locked — this lookbook shows only in private mode (tap to unlock)'
+      : 'Lock — hide this lookbook unless private mode is on';
+    lockBtn.setAttribute('aria-pressed', String(!!portfolio.private));
+  }
+  function toggleLock() {
+    portfolio.private = !portfolio.private;
+    applyLock();
+    saveNow();
+    toast(portfolio.private
+      ? 'Locked — shown only in private mode.'
+      : 'Unlocked — visible normally.');
+  }
 
   const topbar = buildTopbar({
     crumbs: [
@@ -160,7 +179,7 @@ async function openEditor(root, id, ctx) {
       { label: portfolio.name, jp: true, onClick: renamePortfolio },
     ],
   });
-  root.append(editor, bar, topbar, viewToggle, backToList);
+  root.append(editor, bar, topbar, viewToggle, backToList, lockBtn);
   const titleSpan = topbar.querySelector('.crumbs .cur');
 
   // --- state ---
@@ -718,7 +737,7 @@ async function openEditor(root, id, ctx) {
     const nameIn = h('input.field.jp', { value: portfolio.name, placeholder: 'Untitled', spellcheck: false });
     const privToggle = h('button.toggle' + (portfolio.private ? '.on' : ''), {
       type: 'button', role: 'switch', 'aria-checked': String(!!portfolio.private), title: 'Toggle private',
-      onclick: () => { portfolio.private = !portfolio.private; privToggle.classList.toggle('on', !!portfolio.private); privToggle.setAttribute('aria-checked', String(!!portfolio.private)); },
+      onclick: () => { portfolio.private = !portfolio.private; privToggle.classList.toggle('on', !!portfolio.private); privToggle.setAttribute('aria-checked', String(!!portfolio.private)); applyLock(); },
     }, [h('span.knob')]);
     const save = () => { portfolio.name = nameIn.value.trim() || 'Untitled'; titleSpan.textContent = portfolio.name; saveNow(); closeModal(); };
     nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
@@ -857,6 +876,7 @@ async function openEditor(root, id, ctx) {
   ro.observe(editor);
 
   applyViewMode();   // lookbooks open in viewing mode by default
+  applyLock();       // reflect the saved lock state on the padlock button
   rebuild();
 
   return {
