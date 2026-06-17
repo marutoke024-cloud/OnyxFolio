@@ -139,14 +139,13 @@ async function openEditor(root, id, ctx) {
   const pageBtn = h('button.icon-btn', { title: 'Select an image section (then zoom / reframe / change just that one)', onclick: () => cycleSection() }, [ico('pages')]);
   const bgBtn = h('button.icon-btn', { title: 'Page tone', onclick: () => cycleBg() }, [ico('image')]);
   const moveBtn = h('button.icon-btn', { title: 'Reframe image (drag inside the slot)', onclick: () => toggleMove() }, [ico('move')]);
-  const zoomInBtn = h('button.icon-btn', { title: 'Zoom the image in', onclick: () => adjustZoom(1.15) }, [ico('zoomIn')]);
-  const zoomOutBtn = h('button.icon-btn', { title: 'Zoom the image out', onclick: () => adjustZoom(1 / 1.15) }, [ico('zoomOut')]);
+  const zoomBtn = h('button.icon-btn', { title: 'Resize image — fine-tune with a slider', onclick: (e) => openZoomSlider(e.currentTarget) }, [ico('zoomIn')]);
   const delBtn = h('button.icon-btn', { title: 'Delete page', onclick: () => deletePage() }, [ico('trash')]);
   const bar = h('div.pf-bar', {}, [
     prevBtn, indicator, nextBtn,
     h('span.sepv'), pageBtn, addBtn, layoutBtn, pasteBtn,
     h('span.sepv'), textBtn, styleBtn, textbgBtn,
-    h('span.sepv'), bgBtn, moveBtn, zoomInBtn, zoomOutBtn, delBtn,
+    h('span.sepv'), bgBtn, moveBtn, zoomBtn, delBtn,
   ]);
   // viewing mode is the default — a small floating toggle reveals the editor chrome
   const viewToggle = h('button.icon-btn.pf-viewtoggle', { title: 'Toggle edit mode', onclick: () => toggleView() }, [ico('edit')]);
@@ -698,8 +697,9 @@ async function openEditor(root, id, ctx) {
     book.classList.toggle('move-mode', moveMode);
     toast(moveMode ? 'Move mode: drag a picture to reframe it.' : 'Move mode off.');
   }
-  // zoom the selected section's picture (or every picture on the active page) in / out
-  function adjustZoom(factor) {
+  // which picture(s) the zoom applies to: the selected section, else every
+  // picture on the active page
+  function zoomTarget() {
     let page, keys;
     if (selectedSlot) {
       page = pages[selectedSlot.idx];
@@ -708,10 +708,44 @@ async function openEditor(root, id, ctx) {
       page = pages[activePageIdx];
       keys = page && page.slots ? Object.keys(page.slots).filter((k) => page.slots[k]) : [];
     }
+    return { page, keys };
+  }
+  // a slider (0.5×–4×) replaces the old +/- magnifier buttons → fine control
+  let zoomRAF = 0;
+  function openZoomSlider(anchor) {
+    closeMenu();
+    const { page, keys } = zoomTarget();
     if (!keys.length) { toast(selectedSlot ? 'Add an image to that section first.' : 'Add an image to this page first.'); return; }
-    page.zoom = page.zoom || {};
-    keys.forEach((k) => { page.zoom[k] = Math.max(0.5, Math.min(4, (page.zoom[k] || 1) * factor)); });
-    scheduleSave(); rebuild(true);
+    const cur = (page.zoom && page.zoom[keys[0]]) || 1;
+    const slider = h('input.pf-zoom-range', { type: 'range', min: '0.5', max: '4', step: '0.01', value: String(cur) });
+    const readout = h('span.pf-zoom-val', { text: Math.round(cur * 100) + '%' });
+    const commit = () => {
+      const z = Math.max(0.5, Math.min(4, +slider.value));
+      page.zoom = page.zoom || {};
+      keys.forEach((k) => { page.zoom[k] = z; });
+      readout.textContent = Math.round(z * 100) + '%';
+      scheduleSave(); rebuild(true);
+    };
+    slider.addEventListener('input', () => {
+      readout.textContent = Math.round(+slider.value * 100) + '%';
+      if (zoomRAF) cancelAnimationFrame(zoomRAF);
+      zoomRAF = requestAnimationFrame(commit);   // coalesce rebuilds to one per frame
+    });
+    slider.addEventListener('change', () => { if (zoomRAF) cancelAnimationFrame(zoomRAF); commit(); });
+    menu = h('div.pop-menu.pf-zoom-pop', {}, [
+      h('div.pf-zoom-row', {}, [ico('zoomOut'), slider, ico('zoomIn')]),
+      readout,
+    ]);
+    document.body.append(menu);
+    const r = anchor.getBoundingClientRect();
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let left = r.left - mw - 10;
+    if (left < 8) left = Math.min(r.right + 10, window.innerWidth - mw - 8);
+    left = Math.max(8, left);
+    const top = Math.max(8, Math.min(r.top + r.height / 2 - mh / 2, window.innerHeight - mh - 8));
+    menu.style.left = left + 'px'; menu.style.top = top + 'px'; menu.style.bottom = 'auto';
+    requestAnimationFrame(() => menu.classList.add('in'));
+    setTimeout(() => document.addEventListener('pointerdown', closeOnOut), 0);
   }
   // step through the individual image sections of the open spread; the chosen one
   // is highlighted and becomes the target for zoom / reframe / layout / delete

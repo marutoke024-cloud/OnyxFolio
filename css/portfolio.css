@@ -208,6 +208,14 @@
 .lay-opt .mini i { background: var(--ink-3); border-radius: 1px; display: block; }
 .lay-opt span { font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); text-align: center; }
 
+/* image-resize slider popover (replaces the old +/- magnifier buttons) */
+.pf-zoom-pop { display: block; grid-template-columns: none; width: 240px; padding: 14px 16px; overflow: visible; }
+.pf-zoom-row { display: flex; align-items: center; gap: 12px; }
+.pf-zoom-row .ico { flex-shrink: 0; color: var(--ink-3); }
+.pf-zoom-row .ico svg { width: 16px; height: 16px; }
+.pf-zoom-range { flex: 1; min-width: 0; height: 22px; accent-color: var(--accent); cursor: pointer; }
+.pf-zoom-val { display: block; text-align: center; margin-top: 10px; font-size: 12px; letter-spacing: .05em; color: var(--ink-1); font-variant-numeric: tabular-nums; }
+
 /* image picker */
 .pick-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .pick-head h2 { margin: 0; }
