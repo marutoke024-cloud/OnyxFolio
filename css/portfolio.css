@@ -51,14 +51,19 @@
   position: absolute; top: 0; right: 0; width: var(--pw); height: var(--ph);
   transform-origin: left center;
   transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+  /* --lz nudges each leaf back along Z by its depth from the visible top page, so
+     coplanar leaves never share a Z plane → no GPU z-fighting / screen flicker
+     (seen on Galaxy S25, worst in viewing mode where the book is largest). The
+     on-top page stays at Z:0, so there's no perspective scale shift. */
+  transform: translateZ(var(--lz, 0px));
   transition: transform .9s var(--ease-in-out);
   /* NOTE: do NOT put will-change/filter here — on Safari it flattens preserve-3d,
      which makes the flipped leaf's front face show through (mirrored text) on the
      left page and breaks its hit-testing. */
 }
 .book.single .leaf { left: 0; right: auto; transform-origin: left center; }
-.leaf.flipped { transform: rotateY(-180deg); }
-.book.single .leaf.flipped { transform: rotateY(-178deg); opacity: 0; }
+.leaf.flipped { transform: translateZ(var(--lz, 0px)) rotateY(-180deg); }
+.book.single .leaf.flipped { transform: translateZ(var(--lz, 0px)) rotateY(-178deg); opacity: 0; }
 
 .face {
   position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;

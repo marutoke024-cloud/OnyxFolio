@@ -477,7 +477,14 @@ async function openEditor(root, id, ctx) {
 
   function applyFlips() { leaves.forEach((lf, j) => lf.classList.toggle('flipped', j < cur)); }
   function updateZ() {
-    leaves.forEach((lf, j) => { lf.style.zIndex = String(j < cur ? j : nUnits - j); });
+    leaves.forEach((lf, j) => {
+      lf.style.zIndex = String(j < cur ? j : nUnits - j);
+      // depth from the visible top page (0 = on top) → push the rest back along Z
+      // so coplanar leaves don't z-fight (Galaxy S25 flicker). 1px/step is plenty
+      // for the depth buffer yet invisible under the 2600px perspective.
+      const depth = j >= cur ? (j - cur) : (cur - 1 - j);
+      lf.style.setProperty('--lz', (-depth) + 'px');
+    });
     // the cover is a single page → centre it and hide the left well until the book is opened
     book.classList.toggle('cover-mode', mode === 'spread' && cur === 0);
   }
