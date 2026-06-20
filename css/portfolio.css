@@ -44,7 +44,11 @@
 .book.cover-mode .book-well { opacity: 0; }
 
 /* a stitched left page well (spread mode) */
-.book-well { position: absolute; top: 0; left: 0; width: var(--pw); height: var(--ph); background: #0c0c10; border-radius: 6px 0 0 6px; box-shadow: inset -18px 0 30px -20px rgba(0,0,0,.9); transition: opacity .5s var(--ease-out); }
+/* translateZ keeps the well behind every leaf's depth nudge (--lz), so a left
+   page receding by 1px on turn never dips behind the near-black well — that was
+   the momentary black flash of the left page on iPad. -8px is invisible under
+   the 2600px perspective yet safely behind the stack. */
+.book-well { position: absolute; top: 0; left: 0; width: var(--pw); height: var(--ph); background: #0c0c10; border-radius: 6px 0 0 6px; box-shadow: inset -18px 0 30px -20px rgba(0,0,0,.9); transform: translateZ(-8px); transition: opacity .5s var(--ease-out); }
 .book.single .book-well { display: none; }
 
 .leaf {
