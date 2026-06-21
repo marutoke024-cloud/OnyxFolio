@@ -67,6 +67,41 @@
 .rail-sep { height: 1px; background: var(--line-soft); margin: 8px 0; }
 .rail-empty { font-size: 12px; color: var(--ink-3); line-height: 1.6; padding: 8px 12px; }
 
+/* slideshow launcher in the rail */
+.rail-slideshow {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; margin-bottom: 14px; padding: 11px 12px;
+  border-radius: 4px; border: 1px solid var(--accent); background: rgba(205,184,154,0.08);
+  color: var(--accent); font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+  cursor: pointer; transition: background .25s var(--ease-out);
+}
+.rail-slideshow:hover { background: rgba(205,184,154,0.18); }
+.rail-slideshow .ico svg { width: 14px; height: 14px; }
+
+/* --- full-screen slideshow --- */
+.slideshow {
+  position: fixed; left: 0; top: 0; width: 100%; height: 100dvh; z-index: 150;
+  background: #050506; display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .35s var(--ease-out);
+}
+.slideshow.in { opacity: 1; pointer-events: auto; }
+.ss-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 2vmin; }
+/* fit entirely to the screen — never cropped */
+.ss-img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; box-shadow: 0 10px 60px rgba(0,0,0,.6); opacity: 0; transition: opacity .5s var(--ease-out); }
+.ss-img.ready { opacity: 1; }
+.ss-bar {
+  position: absolute; bottom: max(20px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+  z-index: 2; display: flex; gap: 6px; padding: 7px; border-radius: 30px;
+  background: rgba(12,12,15,.72); border: 1px solid rgba(255,255,255,.1); backdrop-filter: blur(10px);
+}
+.ss-speed {
+  border: none; background: transparent; color: var(--ink-2); cursor: pointer;
+  font-size: 13px; letter-spacing: .03em; padding: 8px 13px; border-radius: 22px; transition: all .2s var(--ease-out);
+}
+.ss-speed:hover { color: var(--ink-0); }
+.ss-speed.active { background: var(--accent); color: var(--bg-0); }
+.ss-hint { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 2; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-3); pointer-events: none; }
+
 /* --- empty state / dropzone --- */
 .album-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; z-index: 5; }
 .album-empty .drop {
@@ -134,5 +169,6 @@
   }
   .album-rail .rail-head, .album-rail .rail-sep { display: none; }
   .rail-tag { width: auto; white-space: nowrap; padding: 8px 14px; border: 1px solid var(--line); border-radius: 20px; }
+  .rail-slideshow { width: auto; flex-shrink: 0; margin-bottom: 0; white-space: nowrap; border-radius: 20px; padding: 8px 16px; }
   .lb-nav.prev { left: 8px; } .lb-nav.next { right: 8px; }
 }

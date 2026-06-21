@@ -229,6 +229,9 @@ export async function mount(root, params, ctx) {
   }
   function renderRail() {
     rail.innerHTML = '';
+    rail.append(h('button.rail-slideshow', { title: 'Play a full-screen random slideshow of this folder', onclick: () => startSlideshow() }, [
+      ico('play'), h('span', { text: 'Slide Show' }),
+    ]));
     rail.append(h('div.rail-head', { text: 'Themes' }));
     rail.append(h('button.rail-tag.random' + (activeTag ? '' : '.active'), { onclick: onRandom }, [
       h('span', { text: 'Random' }), h('span.count', { text: String(images.length) }),
@@ -498,6 +501,82 @@ export async function mount(root, params, ctx) {
     lbIndex = Math.min(lbIndex, images.length - 1); showCurrent();
   }
 
+  // --- slideshow (full-screen, random, no repeat until the folder is exhausted) ---
+  const SS_SPEEDS = [3, 5, 10, 20, 30];
+  let ssInterval = 5, ssTimer = 0, ssOrder = [], ssPos = 0, ssActive = false, ssToken = 0, ssLast = -1;
+  const ssImg = h('img.ss-img', { alt: '', draggable: false });
+  const ssStage = h('div.ss-stage', {}, [ssImg]);
+  const ssSpeedBtns = new Map();
+  const ssBar = h('div.ss-bar', {}, SS_SPEEDS.map((s) => {
+    const b = h('button.ss-speed', { text: s + '秒', onclick: () => setSpeed(s) });
+    ssSpeedBtns.set(s, b); return b;
+  }));
+  const ssHint = h('div.ss-hint', { text: '余白をタップで終了' });
+  const slideshow = h('div.slideshow', {}, [ssStage, ssBar, ssHint]);
+  // tap anywhere except the speed bar → ask to exit
+  slideshow.addEventListener('click', (e) => { if (!ssBar.contains(e.target)) ssConfirmExit(); });
+  document.body.append(slideshow);
+
+  const ssApplySpeed = () => ssSpeedBtns.forEach((b, s) => b.classList.toggle('active', s === ssInterval));
+  function ssShuffle() {
+    ssOrder = images.map((_, i) => i);
+    for (let i = ssOrder.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ssOrder[i], ssOrder[j]] = [ssOrder[j], ssOrder[i]]; }
+    // don't repeat the last-shown image straight across a reshuffle boundary
+    if (ssLast >= 0 && ssOrder.length > 1 && ssOrder[0] === ssLast) { [ssOrder[0], ssOrder[1]] = [ssOrder[1], ssOrder[0]]; }
+    ssPos = 0;
+  }
+  async function ssRender() {
+    const im = images[ssOrder[ssPos]]; if (!im) return;
+    ssLast = ssOrder[ssPos];
+    const token = ++ssToken;
+    ssImg.classList.remove('ready');
+    ssImg.onload = () => { if (token === ssToken) ssImg.classList.add('ready'); };
+    const url = await viewURLFor(im);
+    if (token !== ssToken) return;
+    ssImg.src = url || (im.thumb ? blobURL('thumb-' + im.id, im.thumb) : '');
+    const nx = images[ssOrder[(ssPos + 1) % ssOrder.length]];   // warm the next one
+    if (nx) viewURLFor(nx);
+  }
+  function ssSchedule() { clearTimeout(ssTimer); ssTimer = setTimeout(ssAdvance, ssInterval * 1000); }
+  function ssAdvance() {
+    ssPos++;
+    if (ssPos >= ssOrder.length) ssShuffle();   // every image shown once → reshuffle & loop
+    ssRender(); ssSchedule();
+  }
+  function setSpeed(s) { ssInterval = s; ssApplySpeed(); if (ssActive) ssSchedule(); }
+  function startSlideshow() {
+    if (!images.length) { toast('No images to show in this folder.'); return; }
+    ssActive = true; ssLast = -1; ssShuffle(); ssApplySpeed();
+    slideshow.classList.add('in');
+    ssRender(); ssSchedule();
+  }
+  function stopSlideshow() {
+    ssActive = false; clearTimeout(ssTimer);
+    slideshow.classList.remove('in'); ssImg.classList.remove('ready'); ssImg.removeAttribute('src');
+  }
+  // confirm-to-exit; pause while the dialog is up, resume on "no" / backdrop tap
+  function ssConfirmExit() {
+    if (!ssActive) return;
+    clearTimeout(ssTimer);
+    const ov = document.getElementById('overlay');
+    let settled = false;
+    const finish = (exit) => {
+      if (settled) return; settled = true;
+      ov && ov.removeEventListener('click', onBackdrop);
+      closeModal();
+      if (exit) stopSlideshow(); else if (ssActive) ssSchedule();
+    };
+    const onBackdrop = (e) => { if (e.target === ov) finish(false); };
+    openModal(h('div.modal', {}, [
+      h('h2.display', { text: 'スライドショーを終了しますか？' }),
+      h('div.modal-actions', { style: { justifyContent: 'center' } }, [
+        h('button.btn.btn-ghost', { text: 'いいえ', onclick: () => finish(false) }),
+        h('button.btn.btn-danger', { text: '終了する', onclick: () => finish(true) }),
+      ]),
+    ]));
+    if (ov) ov.addEventListener('click', onBackdrop);
+  }
+
   // --- lifecycle ---
   const onVis = () => { if (document.hidden) stopLoop(); else startLoop(); };
   document.addEventListener('visibilitychange', onVis);
@@ -522,6 +601,7 @@ export async function mount(root, params, ctx) {
       ro.disconnect();
       ownedViewURLs.forEach((u) => URL.revokeObjectURL(u));
       ownedViewURLs.clear(); viewCache.clear();
+      clearTimeout(ssTimer); slideshow.remove();
       lightbox.remove();
     },
   };

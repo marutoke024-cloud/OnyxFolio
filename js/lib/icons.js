@@ -30,6 +30,7 @@ export const icons = {
   zoomOut: w('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/>'),
   pages:   w('<rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/>'),
   lock:    w('<rect x="4.5" y="11" width="15" height="9.5" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/>'),
+  play:    w('<path d="M7 4.5l12 7.5-12 7.5z"/>'),
   lockOpen:w('<rect x="4.5" y="11" width="15" height="9.5" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 7.7-1.4"/>'),
 };
 
