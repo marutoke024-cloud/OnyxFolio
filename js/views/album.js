@@ -503,18 +503,21 @@ export async function mount(root, params, ctx) {
 
   // --- slideshow (full-screen, random, no repeat until the folder is exhausted) ---
   const SS_SPEEDS = [3, 5, 10, 20, 30];
-  let ssInterval = 5, ssTimer = 0, ssOrder = [], ssPos = 0, ssActive = false, ssToken = 0, ssLast = -1;
-  const ssImg = h('img.ss-img', { alt: '', draggable: false });
-  const ssStage = h('div.ss-stage', {}, [ssImg]);
+  let ssInterval = 5, ssTimer = 0, ssOrder = [], ssPos = 0, ssActive = false, ssPaused = false, ssToken = 0, ssLast = -1, ssFront = 0;
+  // two stacked images → crossfade with no black frame between slides
+  const ssImgs = [h('img.ss-img', { alt: '', draggable: false }), h('img.ss-img', { alt: '', draggable: false })];
+  const ssStage = h('div.ss-stage', {}, ssImgs);
   const ssSpeedBtns = new Map();
   const ssBar = h('div.ss-bar', {}, SS_SPEEDS.map((s) => {
-    const b = h('button.ss-speed', { text: s + '秒', onclick: () => setSpeed(s) });
+    const b = h('button.ss-speed', { text: s + '秒', onclick: () => { setSpeed(s); ssBar.classList.remove('open'); } });
     ssSpeedBtns.set(s, b); return b;
   }));
-  const ssHint = h('div.ss-hint', { text: '余白をタップで終了' });
-  const slideshow = h('div.slideshow', {}, [ssStage, ssBar, ssHint]);
-  // tap anywhere except the speed bar → ask to exit
-  slideshow.addEventListener('click', (e) => { if (!ssBar.contains(e.target)) ssConfirmExit(); });
+  // controls collapse into translucent corner buttons (speed = bottom-left, pause = bottom-right)
+  const ssSpeedToggle = h('button.ss-ctl.ss-speedtoggle', { title: 'Slide interval', onclick: () => ssBar.classList.toggle('open') }, [ico('timer')]);
+  const ssPlayBtn = h('button.ss-ctl.ss-playpause', { title: 'Pause', onclick: () => ssTogglePause() }, [ico('pause')]);
+  const slideshow = h('div.slideshow', {}, [ssStage, ssBar, ssSpeedToggle, ssPlayBtn]);
+  // tap anywhere that isn't a control → ask to exit
+  slideshow.addEventListener('click', (e) => { if (!e.target.closest('.ss-bar, .ss-ctl')) ssConfirmExit(); });
   document.body.append(slideshow);
 
   const ssApplySpeed = () => ssSpeedBtns.forEach((b, s) => b.classList.toggle('active', s === ssInterval));
@@ -529,30 +532,58 @@ export async function mount(root, params, ctx) {
     const im = images[ssOrder[ssPos]]; if (!im) return;
     ssLast = ssOrder[ssPos];
     const token = ++ssToken;
-    ssImg.classList.remove('ready');
-    ssImg.onload = () => { if (token === ssToken) ssImg.classList.add('ready'); };
+    const incoming = ssImgs[1 - ssFront], outgoing = ssImgs[ssFront];
     const url = await viewURLFor(im);
     if (token !== ssToken) return;
-    ssImg.src = url || (im.thumb ? blobURL('thumb-' + im.id, im.thumb) : '');
+    const src = url || (im.thumb ? blobURL('thumb-' + im.id, im.thumb) : '');
+    // crossfade: the incoming sits on top and fades in while the outgoing stays
+    // opaque beneath, so the screen never drops to black between slides
+    const reveal = () => {
+      if (token !== ssToken) return;
+      incoming.style.zIndex = '2'; outgoing.style.zIndex = '1';
+      incoming.classList.add('show'); outgoing.classList.remove('show');
+      ssFront = 1 - ssFront;
+    };
+    if (incoming.getAttribute('src') === src && src) reveal();
+    else { incoming.onload = reveal; incoming.src = src; }
     const nx = images[ssOrder[(ssPos + 1) % ssOrder.length]];   // warm the next one
     if (nx) viewURLFor(nx);
   }
-  function ssSchedule() { clearTimeout(ssTimer); ssTimer = setTimeout(ssAdvance, ssInterval * 1000); }
+  function ssSchedule() { clearTimeout(ssTimer); if (!ssPaused) ssTimer = setTimeout(ssAdvance, ssInterval * 1000); }
   function ssAdvance() {
     ssPos++;
     if (ssPos >= ssOrder.length) ssShuffle();   // every image shown once → reshuffle & loop
     ssRender(); ssSchedule();
   }
-  function setSpeed(s) { ssInterval = s; ssApplySpeed(); if (ssActive) ssSchedule(); }
+  function setSpeed(s) { ssInterval = s; ssApplySpeed(); if (ssActive && !ssPaused) ssSchedule(); }
+  function ssTogglePause() {
+    ssPaused = !ssPaused;
+    ssPlayBtn.innerHTML = ''; ssPlayBtn.append(ico(ssPaused ? 'play' : 'pause'));
+    ssPlayBtn.title = ssPaused ? 'Resume' : 'Pause';
+    ssPlayBtn.classList.toggle('paused', ssPaused);
+    if (ssPaused) clearTimeout(ssTimer); else ssSchedule();   // resume continues from the current slide
+  }
+  function ssResetPlayBtn() { ssPlayBtn.innerHTML = ''; ssPlayBtn.append(ico('pause')); ssPlayBtn.title = 'Pause'; ssPlayBtn.classList.remove('paused'); }
   function startSlideshow() {
     if (!images.length) { toast('No images to show in this folder.'); return; }
-    ssActive = true; ssLast = -1; ssShuffle(); ssApplySpeed();
+    ssActive = true; ssPaused = false; ssLast = -1; ssFront = 0; ssShuffle(); ssApplySpeed();
+    ssBar.classList.remove('open'); ssResetPlayBtn();
+    ssImgs.forEach((im) => { im.classList.remove('show'); im.removeAttribute('src'); });
+    // Hide the gallery underneath. On iPad a long slideshow can make iOS drop the
+    // fixed overlay's backing layer, letting the album grid behind bleed through —
+    // with nothing behind to show, that can't happen. (visibility keeps layout, so
+    // no resize/rebuild churn.)
+    root.style.visibility = 'hidden';
+    stopLoop();
     slideshow.classList.add('in');
     ssRender(); ssSchedule();
   }
   function stopSlideshow() {
-    ssActive = false; clearTimeout(ssTimer);
-    slideshow.classList.remove('in'); ssImg.classList.remove('ready'); ssImg.removeAttribute('src');
+    ssActive = false; ssPaused = false; clearTimeout(ssTimer);
+    slideshow.classList.remove('in'); ssBar.classList.remove('open');
+    ssImgs.forEach((im) => { im.classList.remove('show'); im.removeAttribute('src'); });
+    root.style.visibility = '';
+    startLoop();
   }
   // confirm-to-exit; pause while the dialog is up, resume on "no" / backdrop tap
   function ssConfirmExit() {
@@ -564,7 +595,8 @@ export async function mount(root, params, ctx) {
       if (settled) return; settled = true;
       ov && ov.removeEventListener('click', onBackdrop);
       closeModal();
-      if (exit) stopSlideshow(); else if (ssActive) ssSchedule();
+      if (exit) stopSlideshow();
+      else if (ssActive && !ssPaused) ssSchedule();   // resume only if it was playing
     };
     const onBackdrop = (e) => { if (e.target === ov) finish(false); };
     openModal(h('div.modal', {}, [

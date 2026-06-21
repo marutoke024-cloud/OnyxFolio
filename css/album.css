@@ -80,27 +80,45 @@
 
 /* --- full-screen slideshow --- */
 .slideshow {
-  position: fixed; left: 0; top: 0; width: 100%; height: 100dvh; z-index: 150;
+  /* inset:0 fills the largest viewport so the overlay always covers the screen
+     (the gallery underneath is also hidden in JS while a slideshow runs) */
+  position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; min-height: 100vh; z-index: 150;
   background: #050506; display: flex; align-items: center; justify-content: center;
   opacity: 0; pointer-events: none; transition: opacity .35s var(--ease-out);
 }
 .slideshow.in { opacity: 1; pointer-events: auto; }
-.ss-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 2vmin; }
-/* fit entirely to the screen — never cropped */
-.ss-img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; box-shadow: 0 10px 60px rgba(0,0,0,.6); opacity: 0; transition: opacity .5s var(--ease-out); }
-.ss-img.ready { opacity: 1; }
-.ss-bar {
-  position: absolute; bottom: max(20px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
-  z-index: 2; display: flex; gap: 6px; padding: 7px; border-radius: 30px;
-  background: rgba(12,12,15,.72); border: 1px solid rgba(255,255,255,.1); backdrop-filter: blur(10px);
+.ss-stage { position: absolute; inset: 0; }
+/* two stacked images crossfade — fit entirely to the screen, never cropped */
+.ss-img { position: absolute; inset: 2vmin; margin: auto; max-width: calc(100% - 4vmin); max-height: calc(100% - 4vmin); width: auto; height: auto; object-fit: contain; display: block; box-shadow: 0 10px 60px rgba(0,0,0,.55); opacity: 0; transition: opacity .6s var(--ease-out); }
+.ss-img.show { opacity: 1; }
+
+/* translucent corner controls */
+.ss-ctl {
+  position: absolute; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 3;
+  width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  background: rgba(20,20,24,.42); border: 1px solid rgba(255,255,255,.14); color: #fff;
+  backdrop-filter: blur(8px); transition: background .2s var(--ease-out);
 }
+.ss-ctl:hover { background: rgba(44,44,50,.6); }
+.ss-ctl .ico svg { width: 22px; height: 22px; }
+.ss-speedtoggle { left: max(16px, env(safe-area-inset-left)); }
+.ss-playpause { right: max(16px, env(safe-area-inset-right)); }
+
+/* the speed menu stows behind the bottom-left toggle until opened */
+.ss-bar {
+  position: absolute; left: max(16px, env(safe-area-inset-left)); bottom: calc(max(16px, env(safe-area-inset-bottom)) + 62px);
+  z-index: 3; display: flex; gap: 6px; padding: 7px; border-radius: 30px;
+  background: rgba(16,16,20,.72); border: 1px solid rgba(255,255,255,.12); backdrop-filter: blur(10px);
+  opacity: 0; pointer-events: none; transform: translateY(8px) scale(.96); transform-origin: bottom left;
+  transition: opacity .2s var(--ease-out), transform .2s var(--ease-out);
+}
+.ss-bar.open { opacity: 1; pointer-events: auto; transform: none; }
 .ss-speed {
   border: none; background: transparent; color: var(--ink-2); cursor: pointer;
   font-size: 13px; letter-spacing: .03em; padding: 8px 13px; border-radius: 22px; transition: all .2s var(--ease-out);
 }
 .ss-speed:hover { color: var(--ink-0); }
 .ss-speed.active { background: var(--accent); color: var(--bg-0); }
-.ss-hint { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 2; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-3); pointer-events: none; }
 
 /* --- empty state / dropzone --- */
 .album-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; z-index: 5; }

@@ -31,6 +31,14 @@ export const icons = {
   pages:   w('<rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/>'),
   lock:    w('<rect x="4.5" y="11" width="15" height="9.5" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/>'),
   play:    w('<path d="M7 4.5l12 7.5-12 7.5z"/>'),
+  pause:   w('<rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/>'),
+  timer:   w('<circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4.5l3 1.5M9.5 2.5h5M12 6V2.5"/>'),
+  pen:     w('<path d="M4 20l4.5-1L19 8.5a2.1 2.1 0 0 0-3-3L5.5 16z"/><path d="M14.5 7l3 3"/>'),
+  marker:  w('<path d="M9 20H4v-3l9.5-9.5 3 3L7 20z"/><path d="M13 6.5l3 3"/><path d="M3 22h18"/>'),
+  eraser:  w('<path d="M16 5l5 5-8.5 8.5H8L3.5 14 12 5.5a2 2 0 0 1 4-.5z"/><path d="M8.5 9.5l5 5M9 21h12"/>'),
+  undo:    w('<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12h-3"/>'),
+  redo:    w('<path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12h3"/>'),
+  dots:    w('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
   lockOpen:w('<rect x="4.5" y="11" width="15" height="9.5" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 7.7-1.4"/>'),
 };
 
