@@ -256,35 +256,85 @@
 .pf-editor.viewing ~ .topbar { transform: translateY(-12px); }
 .pf-bar, .topbar { transition: opacity .3s var(--ease-out), transform .3s var(--ease-out); }
 
-/* the always-visible edit/view toggle */
-.pf-viewtoggle {
+/* the bottom-left tool dock — corner buttons collapse behind one translucent toggle */
+.pf-toolsdock {
   position: fixed; left: 16px; bottom: 16px; z-index: 55;
-  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 10px;
+}
+.pf-toolstoggle {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; cursor: pointer; color: #fff;
+  background: rgba(19,19,24,.5); border: 1px solid rgba(255,255,255,.14);
+  backdrop-filter: blur(8px); box-shadow: var(--shadow-lift); transition: background .2s var(--ease-out);
+}
+.pf-toolstoggle:hover { background: rgba(40,40,46,.62); }
+.pf-toolstoggle .ico svg { width: 20px; height: 20px; }
+.pf-toolsgroup {
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 10px;
+  opacity: 0; pointer-events: none; transform: translateY(10px) scale(.95); transform-origin: bottom center;
+  transition: opacity .2s var(--ease-out), transform .2s var(--ease-out);
+}
+.pf-toolsdock.open .pf-toolsgroup { opacity: 1; pointer-events: auto; transform: none; }
+.pf-tool {
+  position: static; width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
   background: #131318; border: 1px solid var(--line); box-shadow: var(--shadow-lift);
 }
-.pf-viewtoggle:hover { background: var(--bg-3); }
-.pf-backbtn {
-  position: fixed; left: 68px; bottom: 16px; z-index: 55;
-  width: 44px; height: 44px; border-radius: 50%;
-  background: #131318; border: 1px solid var(--line); box-shadow: var(--shadow-lift);
-}
-.pf-backbtn:hover { background: var(--bg-3); }
-/* the padlock — locks the lookbook to private mode */
-.pf-lockbtn {
-  position: fixed; left: 120px; bottom: 16px; z-index: 55;
-  width: 44px; height: 44px; border-radius: 50%;
-  background: #131318; border: 1px solid var(--line); box-shadow: var(--shadow-lift);
-}
-.pf-lockbtn:hover { background: var(--bg-3); }
-.pf-lockbtn.on { background: var(--accent); color: var(--bg-0); border-color: var(--accent); }
-.pf-lockbtn.on:hover { background: var(--accent); }
+.pf-tool:hover { background: var(--bg-3); }
+.pf-tool.on { background: var(--accent); color: var(--bg-0); border-color: var(--accent); }
+.pf-tool.on:hover { background: var(--accent); }
 
 @media (max-width: 760px) {
   .pf-editor { padding: calc(var(--header-h) + 4px) 64px 10px 10px; }
   .pf-editor.viewing { padding: 8px; }
   .pf-bar { right: 8px; padding: 8px 6px; gap: 2px; }
   .pf-bar .icon-btn { width: 34px; height: 34px; }
-  .pf-viewtoggle { left: 12px; bottom: 12px; width: 40px; height: 40px; }
-  .pf-backbtn { left: 58px; bottom: 12px; width: 40px; height: 40px; }
-  .pf-lockbtn { left: 104px; bottom: 12px; width: 40px; height: 40px; }
+  .pf-toolsdock { left: 12px; bottom: 12px; }
+  .pf-toolstoggle, .pf-tool { width: 40px; height: 40px; }
 }
+
+/* ===== markup (Apple Pencil ink) ===== */
+.page-markup { position: absolute; inset: 0; z-index: 6; pointer-events: none; touch-action: none; }
+.markup-mode .face.open-face .page-markup { pointer-events: auto; }
+.markup-mode .face.open-face { pointer-events: auto; }
+.markup-hidden .page-markup { display: none; }
+/* in markup mode the page edges must not steal the pen → no accidental turns */
+.pf-editor.markup-mode .turn-zone { pointer-events: none; }
+
+/* iOS-style markup toolbar, left edge, only while marking up */
+.mk-menu {
+  position: fixed; left: 16px; top: 50%; transform: translateX(-8px) translateY(-50%); z-index: 60;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 8px;
+  border-radius: 18px; background: rgba(28,28,32,.82); border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(14px); box-shadow: 0 10px 40px rgba(0,0,0,.5);
+  opacity: 0; pointer-events: none; transition: opacity .22s var(--ease-out), transform .22s var(--ease-out);
+}
+.pf-editor.markup-mode ~ .mk-menu { opacity: 1; pointer-events: auto; transform: translateX(0) translateY(-50%); }
+.mk-group { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.mk-colors, .mk-widths { gap: 8px; }
+.mk-sep { width: 26px; height: 1px; background: rgba(255,255,255,.14); margin: 2px 0; }
+.mk-tool, .mk-btn {
+  width: 40px; height: 40px; border-radius: 11px; border: 1px solid transparent; cursor: pointer;
+  background: rgba(255,255,255,.06); color: #f2f2f4; display: grid; place-items: center; transition: all .18s var(--ease-out);
+}
+.mk-tool:hover, .mk-btn:hover { background: rgba(255,255,255,.14); }
+.mk-tool svg, .mk-btn svg { width: 22px; height: 22px; }
+.mk-tool.active { background: #fff; color: #1c1c1e; }
+.mk-btn:disabled { opacity: .3; pointer-events: none; }
+.mk-color {
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  border: 2px solid rgba(255,255,255,.25); box-shadow: 0 1px 4px rgba(0,0,0,.4); transition: transform .15s var(--ease-out);
+}
+.mk-color:hover { transform: scale(1.12); }
+.mk-color.active { border-color: #fff; transform: scale(1.18); box-shadow: 0 0 0 2px rgba(255,255,255,.5); }
+.mk-menu.mk-eraser .mk-colors { opacity: .35; }
+.mk-width { width: 34px; height: 22px; border: none; background: transparent; cursor: pointer; display: grid; place-items: center; }
+.mk-wdot { background: #cfcfd4; border-radius: 50%; transition: background .15s; }
+.mk-width:nth-child(1) .mk-wdot { width: 6px; height: 6px; }
+.mk-width:nth-child(2) .mk-wdot { width: 10px; height: 10px; }
+.mk-width:nth-child(3) .mk-wdot { width: 15px; height: 15px; }
+.mk-width.active .mk-wdot { background: var(--accent); }
+.mk-done {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer;
+  border: none; background: transparent; color: var(--accent); font-size: 10px; letter-spacing: .08em; padding: 4px;
+}
+.mk-done svg { width: 22px; height: 22px; }

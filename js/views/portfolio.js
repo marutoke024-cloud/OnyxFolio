@@ -148,11 +148,14 @@ async function openEditor(root, id, ctx) {
     h('span.sepv'), bgBtn, moveBtn, zoomBtn, delBtn,
   ]);
   // viewing mode is the default — a small floating toggle reveals the editor chrome
-  const viewToggle = h('button.icon-btn.pf-viewtoggle', { title: 'Toggle edit mode', onclick: () => toggleView() }, [ico('edit')]);
+  const viewToggle = h('button.icon-btn.pf-tool', { title: 'Toggle edit mode', onclick: () => toggleView() }, [ico('edit')]);
   // back to the lookbook list (always reachable, incl. chrome-free viewing mode)
-  const backToList = h('button.icon-btn.pf-backbtn', { title: 'Back to lookbooks', onclick: () => confirmExit('/portfolio') }, [ico('back')]);
+  const backToList = h('button.icon-btn.pf-tool', { title: 'Back to lookbooks', onclick: () => confirmExit('/portfolio') }, [ico('back')]);
+  // markup (Apple Pencil draw on the open page) and a markup-visibility eye, both in the dock
+  const markupBtn = h('button.icon-btn.pf-tool.pf-markupbtn', { title: 'Markup — draw on this page', onclick: () => toggleMarkup() }, [ico('pen')]);
+  const eyeBtn = h('button.icon-btn.pf-tool.pf-eyebtn', { onclick: () => toggleMarkupVisible() });
   // a padlock that locks the lookbook to private mode — always reachable (incl. viewing mode)
-  const lockBtn = h('button.icon-btn.pf-lockbtn', { onclick: () => toggleLock() });
+  const lockBtn = h('button.icon-btn.pf-tool.pf-lockbtn', { onclick: () => toggleLock() });
   function applyLock() {
     lockBtn.innerHTML = '';
     lockBtn.append(ico(portfolio.private ? 'lock' : 'lockOpen'));
@@ -178,7 +181,43 @@ async function openEditor(root, id, ctx) {
       { label: portfolio.name, jp: true, onClick: renamePortfolio },
     ],
   });
-  root.append(editor, bar, topbar, viewToggle, backToList, lockBtn);
+  // --- markup state + iOS-style left toolbar (built now; the logic is hoisted below) ---
+  const MK_COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de', '#1c1c1e', '#ffffff'];
+  const MK_WIDTHS = [['S', 0.006], ['M', 0.012], ['L', 0.024]];
+  const penState = { tool: 'pen', color: '#ff3b30', width: 0.012 };
+  let markupOn = false, markupHidden = false;
+  const markupCanvases = new Map();          // page → its <canvas> (DOM kept out of saved data)
+  const markupUndo = [], markupRedo = [];
+  const mkToolBtns = {}, mkColorBtns = new Map(), mkWidthBtns = new Map();
+  const mkTool = (tool, icon, label) => {
+    const b = h('button.mk-tool', { title: label, 'aria-label': label, onclick: () => setTool(tool) }, [ico(icon)]);
+    mkToolBtns[tool] = b; return b;
+  };
+  const mkUndoBtn = h('button.mk-btn', { title: 'Undo', onclick: () => markupUndoOp() }, [ico('undo')]);
+  const mkRedoBtn = h('button.mk-btn', { title: 'Redo', onclick: () => markupRedoOp() }, [ico('redo')]);
+  const markupMenu = h('div.mk-menu', {}, [
+    h('div.mk-group', {}, [mkTool('pen', 'pen', 'マジックペン'), mkTool('marker', 'marker', '半透明マーカー'), mkTool('eraser', 'eraser', '消しゴム')]),
+    h('div.mk-sep'),
+    h('div.mk-group.mk-colors', {}, MK_COLORS.map((c) => {
+      const b = h('button.mk-color', { title: c, style: { background: c }, onclick: () => setColor(c) });
+      mkColorBtns.set(c, b); return b;
+    })),
+    h('div.mk-sep'),
+    h('div.mk-group.mk-widths', {}, MK_WIDTHS.map(([lbl, wv]) => {
+      const b = h('button.mk-width', { title: lbl, onclick: () => setWidth(wv) }, [h('span.mk-wdot')]);
+      mkWidthBtns.set(wv, b); return b;
+    })),
+    h('div.mk-sep'),
+    h('div.mk-group', {}, [mkUndoBtn, mkRedoBtn]),
+    h('div.mk-sep'),
+    h('button.mk-done', { onclick: () => toggleMarkup() }, [ico('check'), h('span', { text: '完了' })]),
+  ]);
+
+  // --- floating tool dock (collapses the corner buttons behind one translucent toggle) ---
+  const toolsGroup = h('div.pf-toolsgroup', {}, [backToList, lockBtn, eyeBtn, markupBtn, viewToggle]);
+  const toolsToggle = h('button.pf-toolstoggle', { title: 'Tools', onclick: () => toolsDock.classList.toggle('open') }, [ico('dots')]);
+  const toolsDock = h('div.pf-toolsdock', {}, [toolsGroup, toolsToggle]);
+  root.append(editor, bar, topbar, markupMenu, toolsDock);
   const titleSpan = topbar.querySelector('.crumbs .cur');
 
   // --- state ---
@@ -199,7 +238,7 @@ async function openEditor(root, id, ctx) {
 
   // snapshot of the lookbook as opened, for the "save changes?" prompt on the way out
   const cleanStr = () => JSON.stringify({ ...portfolio, pages: pages.map(({ _idx, ...rest }) => rest) });
-  const snapshot = cleanStr();
+  let snapshot = cleanStr();
   const isDirty = () => cleanStr() !== snapshot;
   function exitPrompt() {
     return new Promise((resolve) => {
@@ -375,6 +414,16 @@ async function openEditor(root, id, ctx) {
         break;
     }
     (page.overlays || []).forEach((ov) => el.append(overlayEl(page, ov)));
+    // markup canvas (Apple Pencil ink) — overlays the page content, drawable only in markup mode
+    const mk = h('canvas.page-markup');
+    el.append(mk);
+    markupCanvases.set(page, mk);
+    if ((page.markup || []).length) renderMarkup(mk, page);   // size + paint only when there's ink
+    mk.addEventListener('pointerdown', (e) => mkDown(e, mk, page));
+    mk.addEventListener('pointermove', mkMove);
+    mk.addEventListener('pointerup', mkUp);
+    mk.addEventListener('pointercancel', mkUp);
+    if (markupOn) ensureCanvasSized(mk);   // live pages must be drawable even when blank
     return el;
   }
 
@@ -411,6 +460,130 @@ async function openEditor(root, id, ctx) {
       window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
     });
     return el;
+  }
+
+  // =====================================================================
+  // MARKUP — Apple Pencil ink on the open page(s); strokes live on page.markup
+  // (normalized 0–1 coords) and render to a per-page <canvas>.
+  // =====================================================================
+  function pageCanvasPx() {
+    const cs = getComputedStyle(book);
+    return { pw: parseFloat(cs.getPropertyValue('--pw')) || 320, ph: parseFloat(cs.getPropertyValue('--ph')) || 440 };
+  }
+  function ensureCanvasSized(cv) {
+    const { pw, ph } = pageCanvasPx();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.max(1, Math.round(pw * dpr)), H = Math.max(1, Math.round(ph * dpr));
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  }
+  function drawStroke(ctx, st, W, H) {
+    const pts = st.points || []; if (!pts.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = st.tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.globalAlpha = st.tool === 'marker' ? 0.38 : 1;
+    ctx.strokeStyle = st.color || '#ff3b30';
+    ctx.lineWidth = Math.max(1, (st.width || 0.012) * W);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach((p, i) => { const x = p[0] * W, y = p[1] * H; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    if (pts.length === 1) ctx.lineTo(pts[0][0] * W + 0.1, pts[0][1] * H);   // a tap → a dot
+    ctx.stroke();
+    ctx.restore();
+  }
+  function renderMarkup(cv, page) {
+    ensureCanvasSized(cv);
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    (page.markup || []).forEach((st) => drawStroke(ctx, st, cv.width, cv.height));
+  }
+  function repaintPage(page) { const cv = markupCanvases.get(page); if (cv) renderMarkup(cv, page); }
+
+  let mkStroke = null, mkCv = null, mkPage = null;
+  function mkDown(e, cv, page) {
+    if (!markupOn || !cv.closest('.face.open-face')) return;
+    e.preventDefault(); e.stopPropagation();
+    ensureCanvasSized(cv);
+    const base = penState.width;
+    const w = penState.tool === 'marker' ? base * 2.6 : penState.tool === 'eraser' ? base * 3.2 : base;
+    mkStroke = { tool: penState.tool, color: penState.color, width: w, points: [] };
+    mkCv = cv; mkPage = page;
+    mkAddPoint(e);
+    try { cv.setPointerCapture(e.pointerId); } catch {}
+    mkPaintLive();
+  }
+  function mkAddPoint(e) {
+    const r = mkCv.getBoundingClientRect();
+    mkStroke.points.push([
+      Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+    ]);
+  }
+  function mkMove(e) { if (!mkStroke) return; e.preventDefault(); mkAddPoint(e); mkPaintLive(); }
+  function mkPaintLive() {
+    renderMarkup(mkCv, mkPage);                                             // committed ink…
+    drawStroke(mkCv.getContext('2d'), mkStroke, mkCv.width, mkCv.height);   // …plus the in-progress stroke
+  }
+  function mkUp() {
+    if (!mkStroke) return;
+    if (mkStroke.points.length) {
+      mkPage.markup = mkPage.markup || [];
+      mkPage.markup.push(mkStroke);
+      markupUndo.push({ page: mkPage }); markupRedo.length = 0; updateUndoRedo();
+      repaintPage(mkPage); scheduleSave();
+    }
+    mkStroke = null; mkCv = null; mkPage = null;
+  }
+  function markupUndoOp() {
+    const op = markupUndo.pop(); if (!op) return;
+    const st = (op.page.markup || []).pop();
+    if (st) { markupRedo.push({ page: op.page, stroke: st }); repaintPage(op.page); scheduleSave(); }
+    updateUndoRedo();
+  }
+  function markupRedoOp() {
+    const op = markupRedo.pop(); if (!op) return;
+    op.page.markup = op.page.markup || []; op.page.markup.push(op.stroke);
+    markupUndo.push({ page: op.page }); repaintPage(op.page); scheduleSave(); updateUndoRedo();
+  }
+  function updateUndoRedo() { mkUndoBtn.disabled = !markupUndo.length; mkRedoBtn.disabled = !markupRedo.length; }
+
+  function applyMarkupUI() {
+    Object.entries(mkToolBtns).forEach(([t, b]) => b.classList.toggle('active', t === penState.tool));
+    mkColorBtns.forEach((b, c) => b.classList.toggle('active', c === penState.color));
+    mkWidthBtns.forEach((b, wv) => b.classList.toggle('active', wv === penState.width));
+    markupMenu.classList.toggle('mk-eraser', penState.tool === 'eraser');
+  }
+  function setTool(t) { penState.tool = t; applyMarkupUI(); }
+  function setColor(c) { penState.color = c; if (penState.tool === 'eraser') penState.tool = 'pen'; applyMarkupUI(); }
+  function setWidth(w) { penState.width = w; applyMarkupUI(); }
+
+  function enterMarkup() {
+    if (!viewMode) { viewMode = true; applyViewMode(); }
+    markupOn = true;
+    if (markupHidden) { markupHidden = false; applyMarkupVisible(); }      // can't draw blind
+    editor.classList.add('markup-mode');
+    markupBtn.classList.add('on');
+    markupUndo.length = 0; markupRedo.length = 0; updateUndoRedo(); applyMarkupUI();
+    qsa('.face.open-face .page-markup', book).forEach((cv) => ensureCanvasSized(cv));
+    toolsDock.classList.remove('open');
+  }
+  function exitMarkup() {
+    markupOn = false;
+    editor.classList.remove('markup-mode');
+    markupBtn.classList.remove('on');
+    saveNow();                 // markup auto-saves on exit…
+    snapshot = cleanStr();     // …and counts as saved, so leaving won't offer to discard it
+  }
+  function toggleMarkup() { markupOn ? exitMarkup() : enterMarkup(); }
+
+  function applyMarkupVisible() {
+    book.classList.toggle('markup-hidden', markupHidden);
+    eyeBtn.innerHTML = ''; eyeBtn.append(ico(markupHidden ? 'eyeOff' : 'eye'));
+    eyeBtn.title = markupHidden ? 'Show markup' : 'Hide markup';
+    eyeBtn.classList.toggle('on', !markupHidden);
+  }
+  function toggleMarkupVisible() {
+    if (markupOn && !markupHidden) { toast('Exit markup to hide the ink.'); return; }
+    markupHidden = !markupHidden; applyMarkupVisible();
   }
 
   // --- book build ---
@@ -455,6 +628,7 @@ async function openEditor(root, id, ctx) {
     book.classList.add('no-anim');
     book.classList.toggle('single', mode === 'single');
     book.innerHTML = '';
+    markupCanvases.clear();
     leaves = [];
     if (mode === 'spread') {
       book.append(h('div.book-well'));
@@ -497,16 +671,20 @@ async function openEditor(root, id, ctx) {
   function setLive() {
     leaves.forEach((lf) => [lf._front, lf._back].forEach((f) => {
       if (!f) return;
-      f.classList.remove('live');
+      f.classList.remove('live', 'open-face');
       f.querySelector('.page')?.classList.remove('editing');
       qsa('.txt', f).forEach((t) => (t.contentEditable = 'false'));
     }));
+    // the currently open spread faces — tagged in BOTH modes so markup can draw on
+    // them even while viewing (where nothing is "live"/editable)
+    const open = [];
+    if (leaves[cur]) open.push(leaves[cur]._front);
+    if (mode === 'spread' && cur > 0 && leaves[cur - 1]) open.push(leaves[cur - 1]._back);
+    const live = open.filter(Boolean);
+    live.forEach((f) => f.classList.add('open-face'));
+    if (markupOn) qsa('.face.open-face .page-markup', book).forEach((cv) => ensureCanvasSized(cv));
     if (viewMode) { activePageIdx = (mode === 'spread' ? 2 * cur : cur); return; }  // read-only while viewing
-    const live = [];
-    if (leaves[cur]) live.push(leaves[cur]._front);
-    if (mode === 'spread' && cur > 0 && leaves[cur - 1]) live.push(leaves[cur - 1]._back);
     live.forEach((f) => {
-      if (!f) return;
       f.classList.add('live');
       f.querySelector('.page')?.classList.add('editing');
       qsa('.txt', f).forEach((t) => (t.contentEditable = 'true'));
@@ -918,6 +1096,7 @@ async function openEditor(root, id, ctx) {
 
   applyViewMode();   // lookbooks open in viewing mode by default
   applyLock();       // reflect the saved lock state on the padlock button
+  applyMarkupVisible(); applyMarkupUI(); updateUndoRedo();
   rebuild();
 
   return {
