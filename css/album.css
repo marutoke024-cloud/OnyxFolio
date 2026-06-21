@@ -80,9 +80,10 @@
 
 /* --- full-screen slideshow --- */
 .slideshow {
-  /* inset:0 fills the largest viewport so the overlay always covers the screen
-     (the gallery underneath is also hidden in JS while a slideshow runs) */
-  position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; min-height: 100vh; z-index: 150;
+  /* height = the DYNAMIC viewport so the bottom controls sit at the visible edge
+     (not clipped under the iOS toolbar). The gallery underneath is hidden in JS
+     while a slideshow runs, so nothing can show through anyway. */
+  position: fixed; left: 0; top: 0; width: 100%; height: 100dvh; z-index: 150;
   background: #050506; display: flex; align-items: center; justify-content: center;
   opacity: 0; pointer-events: none; transition: opacity .35s var(--ease-out);
 }

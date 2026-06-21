@@ -516,8 +516,10 @@ export async function mount(root, params, ctx) {
   const ssSpeedToggle = h('button.ss-ctl.ss-speedtoggle', { title: 'Slide interval', onclick: () => ssBar.classList.toggle('open') }, [ico('timer')]);
   const ssPlayBtn = h('button.ss-ctl.ss-playpause', { title: 'Pause', onclick: () => ssTogglePause() }, [ico('pause')]);
   const slideshow = h('div.slideshow', {}, [ssStage, ssBar, ssSpeedToggle, ssPlayBtn]);
-  // tap anywhere that isn't a control → ask to exit
-  slideshow.addEventListener('click', (e) => { if (!e.target.closest('.ss-bar, .ss-ctl')) ssConfirmExit(); });
+  // Tap the image/margin to exit. The listener lives on the stage only — the
+  // controls are siblings, so their clicks never reach it (and a control that
+  // swaps its own icon mid-click can't fool a target-based guard).
+  ssStage.addEventListener('click', () => ssConfirmExit());
   document.body.append(slideshow);
 
   const ssApplySpeed = () => ssSpeedBtns.forEach((b, s) => b.classList.toggle('active', s === ssInterval));
