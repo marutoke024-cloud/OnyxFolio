@@ -84,19 +84,23 @@ export async function pullAll(onProgress = () => {}) {
   for (const f of (manifest.folders || [])) await putRaw('folders', f);
   for (const p of (manifest.portfolios || [])) await putRaw('portfolios', p);
 
+  // Download in parallel: a pool of workers pulls images concurrently, and each
+  // image fetches its full blob + thumbnail at the same time. Far faster than the
+  // old one-at-a-time loop on libraries with many images.
+  const CONCURRENCY = 5;
   let done = 0;
-  for (const meta of images) {
+  const fetchOne = async (meta) => {
     let blob = null, thumb = null;
-    try {
-      const ib = await getBytes(ref(storage, `${PREFIX}/img/${meta.id}`), 50 * 1024 * 1024);
-      blob = new Blob([ib], { type: meta.type || 'image/jpeg' });
-    } catch {}
-    try {
-      const tb = await getBytes(ref(storage, `${PREFIX}/thumb/${meta.id}`), 20 * 1024 * 1024);
-      thumb = new Blob([tb], { type: 'image/jpeg' });
-    } catch {}
+    await Promise.all([
+      (async () => { try { const ib = await getBytes(ref(storage, `${PREFIX}/img/${meta.id}`), 50 * 1024 * 1024); blob = new Blob([ib], { type: meta.type || 'image/jpeg' }); } catch {} })(),
+      (async () => { try { const tb = await getBytes(ref(storage, `${PREFIX}/thumb/${meta.id}`), 20 * 1024 * 1024); thumb = new Blob([tb], { type: 'image/jpeg' }); } catch {} })(),
+    ]);
     await putRaw('images', { ...meta, blob: blob || thumb, thumb: thumb || blob });
     onProgress({ phase: 'download', done: ++done, total: images.length });
-  }
+  };
+  let next = 0;
+  const worker = async () => { while (next < images.length) { await fetchOne(images[next++]); } };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, images.length) }, worker));
+
   return { folders: (manifest.folders || []).length, images: images.length, portfolios: (manifest.portfolios || []).length };
 }
