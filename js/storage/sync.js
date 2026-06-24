@@ -49,6 +49,7 @@ const stripBlobs = ({ blob, thumb, ...meta }) => meta;
 
 /** Push the entire local library to Storage, overwriting the remote copy. */
 export async function pushAll(onProgress = () => {}) {
+  onProgress({ phase: 'connect', done: 0, total: 0 });
   const { storage, ref, uploadBytes, uploadString } = await fb();
   const [folders, images, portfolios] = await Promise.all([getFolders(), getAllImages(), getPortfolios()]);
 
@@ -71,11 +72,14 @@ export async function pushAll(onProgress = () => {}) {
 
 /** Pull the remote library, overwriting everything local. */
 export async function pullAll(onProgress = () => {}) {
+  onProgress({ phase: 'connect', done: 0, total: 0 });
   const { storage, ref, getBytes } = await fb();
+  onProgress({ phase: 'manifest', done: 0, total: 0 });
   const buf = await getBytes(ref(storage, `${PREFIX}/manifest.json`), 20 * 1024 * 1024);
   const manifest = JSON.parse(new TextDecoder().decode(buf));
   const images = manifest.images || [];
 
+  onProgress({ phase: 'prepare', done: 0, total: images.length });
   await clearAll();
   for (const f of (manifest.folders || [])) await putRaw('folders', f);
   for (const p of (manifest.portfolios || [])) await putRaw('portfolios', p);

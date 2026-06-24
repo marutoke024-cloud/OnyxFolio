@@ -46,7 +46,17 @@ export function openSettings() {
   });
 
   const progress = h('div.note', { text: 'Sync is manual — nothing leaves this device until you press a button.' });
-  const setProg = ({ phase, done, total }) => { progress.textContent = `${phase}…  ${done} / ${total}`; };
+
+  // human phase labels + a shared progress renderer (text + bar gauge)
+  const PHASE = { connect: 'Connecting', manifest: 'Reading manifest', prepare: 'Preparing', upload: 'Uploading', download: 'Downloading' };
+  // indeterminate phases (no total yet) get a small token width so the bar moves
+  const STEP = { connect: 6, manifest: 14, prepare: 18 };
+  const fmt = ({ phase, done, total }) => {
+    const name = PHASE[phase] || phase;
+    return total ? `${name}…  ${done} / ${total}  (${Math.round(done / total * 100)}%)` : `${name}…`;
+  };
+  const pct = ({ phase, done, total }) => (total ? Math.round(done / total * 100) : (STEP[phase] || 0));
+  const setProg = (p) => { progress.textContent = fmt(p); };
 
   const upBtn = h('button.btn.btn-with-ico', {}, [ico('cloudUp'), h('span', { text: 'Upload · overwrite cloud' })]);
   upBtn.onclick = async () => {
@@ -62,6 +72,10 @@ export function openSettings() {
     } finally { upBtn.disabled = false; downBtn.disabled = false; }
   };
 
+  const dlBar = h('div.sync-bar', {}, [h('div.sync-bar-fill')]);
+  const dlFill = dlBar.querySelector('.sync-bar-fill');
+  const dlLabel = h('div.note', { text: 'Starting…' });
+
   const downBtn = h('button.btn.btn-with-ico', {}, [ico('cloudDown'), h('span', { text: 'Download · overwrite local' })]);
   downBtn.onclick = async () => {
     if (!isConfigured()) return toast('Add your Firebase config first.', { error: true });
@@ -71,18 +85,29 @@ export function openSettings() {
       confirmText: 'Download & replace', danger: true,
     });
     if (!ok) return;
-    openModal(workingModal('Downloading from cloud…', progressClone));
+    dlFill.style.width = '0%'; dlLabel.textContent = 'Starting…';
+    openModal(workingModal('Downloading from cloud…', dlBar, dlLabel));
     try {
-      const r = await pullAll((p) => { progressClone.textContent = `${p.phase}…  ${p.done} / ${p.total}`; });
+      const r = await pullAll((p) => { dlFill.style.width = pct(p) + '%'; dlLabel.textContent = fmt(p); });
+      dlFill.style.width = '100%';
       toast(`Restored ${r.images} images.`);
       setTimeout(() => location.reload(), 600);
     } catch (e) {
-      closeModal();
-      toast(e.message || 'Download failed.', { error: true });
+      const msg = String((e && (e.code || e.message)) || e || '');
+      // A read that hangs and retry-times-out is almost always the bucket's CORS
+      // not allowing this site — uploads work without it, browser downloads don't.
+      const corsLikely = /retry|timeout|timed out|exceeded|network|unknown|cors|app\/|0/i.test(msg);
+      openModal(h('div.modal', {}, [
+        h('h2.display', { text: 'Download failed' }),
+        h('p.modal-sub', { text: corsLikely
+          ? 'The download timed out reading from Cloud Storage. This is almost always because the Storage bucket has no CORS rule for this site — uploads work without CORS, but browser downloads (getBytes) require it.'
+          : ('Error: ' + msg) }),
+        corsLikely ? h('div.note', { html: 'Fix: add a CORS rule to your bucket that allows this origin to <em>GET</em>, then try again.' }) : null,
+        h('div.modal-actions', {}, [h('button.btn.btn-ghost', { text: 'Close', onclick: () => closeModal() })]),
+      ]));
+      toast(corsLikely ? 'Download timed out — bucket CORS not set.' : (e.message || 'Download failed.'), { error: true });
     }
   };
-
-  const progressClone = h('div.note', { text: 'Starting…' });
 
   const modal = h('div.modal', {}, [
     h('h2.display', { text: 'Sync & Settings' }),
@@ -114,10 +139,10 @@ export function openSettings() {
   openModal(modal);
 }
 
-function workingModal(title, progressNode) {
+function workingModal(title, ...nodes) {
   return h('div.modal', {}, [
     h('h2.display', { text: title }),
     h('div.spinner'),
-    progressNode,
+    ...nodes,
   ]);
 }
