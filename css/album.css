@@ -142,9 +142,23 @@
   opacity: 0; pointer-events: none; transition: opacity .4s var(--ease-out);
 }
 .lightbox.in { opacity: 1; pointer-events: auto; }
-.lb-stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: clamp(14px, 4vw, 54px); position: relative; touch-action: none; overflow: hidden; }
-.lb-stage img { max-width: 100%; max-height: 100%; min-height: 0; min-width: 0; object-fit: contain; border-radius: 3px; box-shadow: var(--shadow-lift); transform-origin: center center; transition: transform .09s ease-out, opacity .16s ease; will-change: transform; opacity: 0; }
+.lb-stage { width: 100%; height: 100%; position: relative; touch-action: none; overflow: hidden; }
+/* wrapper fills the stage (definite size → img max-height resolves on iOS) and
+   carries the zoom transform so the ink canvas scales with the picture */
+.lb-imgwrap {
+  position: absolute; inset: 0; padding: clamp(14px, 4vw, 54px);
+  display: flex; align-items: center; justify-content: center;
+  transform-origin: center center; transition: transform .09s ease-out; will-change: transform;
+}
+.lb-stage img { max-width: 100%; max-height: 100%; min-height: 0; min-width: 0; object-fit: contain; border-radius: 3px; box-shadow: var(--shadow-lift); transition: opacity .16s ease; opacity: 0; }
 .lb-stage img.ready { opacity: 1; }
+/* the ink layer is pinned onto the displayed image box by JS */
+.lb-ink { position: absolute; z-index: 2; pointer-events: none; touch-action: none; }
+.lb-ink.drawing { pointer-events: auto; cursor: crosshair; }
+/* album's markup toolbar sits above the lightbox (120) and shows via .show */
+.mk-menu.lb-mk { z-index: 140; }
+.mk-menu.show { opacity: 1; pointer-events: auto; transform: translateX(0) translateY(-50%); }
+.lb-penbtn.on { background: var(--accent); color: var(--bg-0); border-color: var(--accent); }
 .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; }
 .lb-nav.prev { left: 14px; } .lb-nav.next { right: 14px; }
 .lb-tools { position: fixed; top: 16px; left: 16px; z-index: 3; display: flex; gap: 8px; }

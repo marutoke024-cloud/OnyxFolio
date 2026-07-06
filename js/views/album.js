@@ -8,7 +8,10 @@ import { getFolder, getImages, addImage, updateImage, deleteImage, blobURL, revo
 import { fileToImageRecord } from '../lib/image.js';
 import { imageFileFromPasteEvent, readClipboardImageFile } from '../lib/clipboard.js';
 
-const BASE_W = 320;
+// Base element width for cloud items. The on-screen size comes from the computed
+// scale (ts = sizePx / w0), so shrinking this only shrinks each item's GPU layer
+// (~34% less texture memory) — the visual size is identical.
+const BASE_W = 260;
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
 export async function mount(root, params, ctx) {
@@ -53,9 +56,11 @@ export async function mount(root, params, ctx) {
     ]);
   }
 
-  // The animated "cloud" doesn't scale — every image is its own GPU layer updated
-  // each frame. Past this count we render a calm, scrollable, lazy-loaded grid.
-  const CLOUD_MAX = 60;
+  // The animated cloud costs one GPU layer per image plus per-frame transform
+  // writes. With smaller layers (BASE_W) and staggered style writes (see loop)
+  // it stays smooth well past the old 60; beyond this we still fall back to the
+  // calm, scrollable, lazy-loaded grid.
+  const CLOUD_MAX = 150;
   const gridMode = () => images.length > CLOUD_MAX;
 
   // tap → view large; long-press → edit metadata (shared by cloud items and grid cells)
@@ -193,15 +198,23 @@ export async function mount(root, params, ctx) {
     });
   }
 
+  let frameFlip = 0;
   function loop(now) {
     if (!running || document.hidden) { raf = 0; return; }
     const dt = Math.min(50, now - last); last = now; t += dt * 0.001;
     const W = cloud.clientWidth || 800, H = cloud.clientHeight || 600;
-    for (const s of items) {
+    // Big clouds: write styles for half the items per frame (alternating). The
+    // physics still integrates every frame for everyone, so motion stays correct —
+    // each item just repaints at ~30fps, which the slow drift can't tell apart.
+    frameFlip ^= 1;
+    const stagger = items.length > 70;
+    for (let i = 0; i < items.length; i++) {
+      const s = items[i];
       s.cx += (s.tx - s.cx) * 0.06;
       s.cy += (s.ty - s.cy) * 0.06;
       s.cs += (s.ts - s.cs) * 0.07;
       s.copacity += (s.topacity - s.copacity) * 0.08;
+      if (stagger && (i & 1) !== frameFlip && !s.hover) continue;
       const driftK = activeTag ? 0.3 : 1;   // calm the drift while a theme grid is shown → no overlap
       const dx = driftK * s.amp * Math.sin(t * s.spd + s.phx);
       const dy = driftK * s.amp * 0.85 * Math.sin(t * s.spd * 0.9 + s.phy);
@@ -212,7 +225,7 @@ export async function mount(root, params, ctx) {
       let y = Math.max(hh + 2, Math.min(H - hh - 2, s.cy + dy));
       s.el.style.transform = `translate3d(${(x - s.w0 / 2).toFixed(1)}px, ${(y - s.ih0 / 2).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
       s.el.style.opacity = s.copacity.toFixed(3);
-      s.el.style.zIndex = String(z);
+      if (s._z !== z) { s._z = z; s.el.style.zIndex = String(z); }
     }
     raf = requestAnimationFrame(loop);
   }
@@ -363,29 +376,163 @@ export async function mount(root, params, ctx) {
     setTimeout(() => nameInput.focus(), 120);
   }
 
-  // --- lightbox (view only) ---
+  // --- lightbox (view + pen markup) ---
   let lbIndex = -1;
   const lbImg = h('img', { alt: '' });
+  const lbInk = h('canvas.lb-ink');
+  // wrapper carries the zoom transform so image and ink scale together
+  const lbWrap = h('div.lb-imgwrap', {}, [lbImg, lbInk]);
   const lbClose = h('button.icon-btn.lb-close', { onclick: closeLightbox }, [ico('close')]);
   const lbStage = h('div.lb-stage', {}, [
+    lbWrap,
     h('button.icon-btn.lb-nav.prev', { onclick: () => step(-1) }, [ico('back')]),
-    lbImg,
     h('button.icon-btn.lb-nav.next', { onclick: () => step(1), style: { transform: 'translateY(-50%) scaleX(-1)' } }, [ico('back')]),
   ]);
-  lbStage.addEventListener('click', (e) => { if (e.target === lbStage) closeLightbox(); });
+  lbStage.addEventListener('click', (e) => { if (e.target === lbStage || e.target === lbWrap) closeLightbox(); });
+  const inkBtn = h('button.icon-btn.lb-penbtn', { title: 'Pen — draw on this image', onclick: () => toggleInk() }, [ico('pen')]);
   const lightbox = h('div.lightbox', {}, [
     lbStage,
     h('div.lb-tools', {}, [
       h('button.icon-btn', { title: 'Edit', onclick: () => openEditModal(lbIndex) }, [ico('edit')]),
+      inkBtn,
       h('button.icon-btn', { title: 'Delete', onclick: deleteCurrent }, [ico('trash')]),
     ]),
     lbClose,
   ]);
   document.body.append(lightbox);
 
-  // --- zoom & pan (wheel · pinch · drag) ---
+  // --- lightbox ink: same tools as the lookbook markup, strokes on im.markup ---
+  const INK_COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de', '#1c1c1e', '#ffffff'];
+  const INK_WIDTHS = [0.006, 0.012, 0.024];
+  const inkState = { tool: 'pen', color: '#ff3b30', width: 0.012 };
+  let inkOn = false, inkStroke = null;
+  const inkUndoA = [], inkRedoA = [];
+  const inkToolBtns = {}, inkColorBtns = new Map(), inkWidthBtns = new Map();
+  const inkToolB = (tool, icon, label) => {
+    const b = h('button.mk-tool', { title: label, onclick: () => { inkState.tool = tool; inkUI(); } }, [ico(icon)]);
+    inkToolBtns[tool] = b; return b;
+  };
+  const inkUndoBtn = h('button.mk-btn', { title: 'Undo', onclick: () => inkUndo() }, [ico('undo')]);
+  const inkRedoBtn = h('button.mk-btn', { title: 'Redo', onclick: () => inkRedo() }, [ico('redo')]);
+  const lbMk = h('div.mk-menu.lb-mk', {}, [
+    h('div.mk-group', {}, [inkToolB('pen', 'pen', 'マジックペン'), inkToolB('marker', 'marker', '半透明マーカー'), inkToolB('eraser', 'eraser', '消しゴム')]),
+    h('div.mk-sep'),
+    h('div.mk-group.mk-colors', {}, INK_COLORS.map((c) => {
+      const b = h('button.mk-color', { title: c, style: { background: c }, onclick: () => { inkState.color = c; if (inkState.tool === 'eraser') inkState.tool = 'pen'; inkUI(); } });
+      inkColorBtns.set(c, b); return b;
+    })),
+    h('div.mk-sep'),
+    h('div.mk-group.mk-widths', {}, INK_WIDTHS.map((wv) => {
+      const b = h('button.mk-width', { onclick: () => { inkState.width = wv; inkUI(); } }, [h('span.mk-wdot')]);
+      inkWidthBtns.set(wv, b); return b;
+    })),
+    h('div.mk-sep'),
+    h('div.mk-group', {}, [inkUndoBtn, inkRedoBtn]),
+    h('div.mk-sep'),
+    h('button.mk-done', { onclick: () => toggleInk() }, [ico('check'), h('span', { text: '完了' })]),
+  ]);
+  lightbox.append(lbMk);
+
+  function inkUI() {
+    Object.entries(inkToolBtns).forEach(([tl, b]) => b.classList.toggle('active', tl === inkState.tool));
+    inkColorBtns.forEach((b, c) => b.classList.toggle('active', c === inkState.color));
+    inkWidthBtns.forEach((b, wv) => b.classList.toggle('active', wv === inkState.width));
+    lbMk.classList.toggle('mk-eraser', inkState.tool === 'eraser');
+    inkUndoBtn.disabled = !inkUndoA.length;
+    inkRedoBtn.disabled = !inkRedoA.length;
+  }
+  function drawInkStroke(ctx, st, W, H) {
+    const pts = st.points || []; if (!pts.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = st.tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.globalAlpha = st.tool === 'marker' ? 0.38 : 1;
+    ctx.strokeStyle = st.color || '#ff3b30';
+    ctx.lineWidth = Math.max(1, (st.width || 0.012) * W);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach((p, i) => { const x = p[0] * W, y = p[1] * H; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    if (pts.length === 1) ctx.lineTo(pts[0][0] * W + 0.1, pts[0][1] * H);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // pin the canvas onto the displayed image box, then paint the saved strokes
+  function renderInk() {
+    const im = images[lbIndex]; if (!im) return;
+    const cw = lbImg.clientWidth, ch = lbImg.clientHeight;
+    if (!cw || !ch) { lbInk.width = lbInk.height = 0; return; }
+    lbInk.style.left = lbImg.offsetLeft + 'px';
+    lbInk.style.top = lbImg.offsetTop + 'px';
+    lbInk.style.width = cw + 'px';
+    lbInk.style.height = ch + 'px';
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.round(cw * dpr), H = Math.round(ch * dpr);
+    if (lbInk.width !== W || lbInk.height !== H) { lbInk.width = W; lbInk.height = H; }
+    const ctx = lbInk.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    (im.markup || []).forEach((st) => drawInkStroke(ctx, st, W, H));
+  }
+  function inkCommit() {
+    const im = images[lbIndex]; if (!im || !inkStroke || !inkStroke.points.length) { inkStroke = null; return; }
+    im.markup = im.markup || [];
+    im.markup.push(inkStroke);
+    inkUndoA.push(1); inkRedoA.length = 0;
+    updateImage(im.id, { markup: im.markup });   // save as you go — nothing to lose on exit
+    inkStroke = null;
+    renderInk(); inkUI();
+  }
+  function inkUndo() {
+    const im = images[lbIndex]; if (!im || !inkUndoA.length) return;
+    const st = (im.markup || []).pop();
+    if (st) { inkRedoA.push(st); inkUndoA.pop(); updateImage(im.id, { markup: im.markup }); renderInk(); }
+    inkUI();
+  }
+  function inkRedo() {
+    const im = images[lbIndex]; if (!im || !inkRedoA.length) return;
+    im.markup = im.markup || [];
+    im.markup.push(inkRedoA.pop());
+    inkUndoA.push(1);
+    updateImage(im.id, { markup: im.markup });
+    renderInk(); inkUI();
+  }
+  function toggleInk() {
+    inkOn = !inkOn;
+    inkBtn.classList.toggle('on', inkOn);
+    lbMk.classList.toggle('show', inkOn);
+    lbInk.classList.toggle('drawing', inkOn);
+    if (inkOn) { resetZoom(); inkUndoA.length = 0; inkRedoA.length = 0; inkUI(); renderInk(); }
+    // strokes were saved per-commit; toggling off just hides the tools
+  }
+  lbInk.addEventListener('pointerdown', (e) => {
+    if (!inkOn) return;
+    e.preventDefault(); e.stopPropagation();
+    renderInk();   // make sure the canvas is sized before the first point lands
+    const base = inkState.width;
+    const w = inkState.tool === 'marker' ? base * 2.6 : inkState.tool === 'eraser' ? base * 3.2 : base;
+    inkStroke = { tool: inkState.tool, color: inkState.color, width: w, points: [] };
+    inkPoint(e); inkPaint();
+    try { lbInk.setPointerCapture(e.pointerId); } catch {}
+  });
+  function inkPoint(e) {
+    const r = lbInk.getBoundingClientRect();
+    inkStroke.points.push([
+      Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+    ]);
+  }
+  function inkPaint() {
+    const im = images[lbIndex]; if (!im) return;
+    const ctx = lbInk.getContext('2d');
+    ctx.clearRect(0, 0, lbInk.width, lbInk.height);
+    (im.markup || []).forEach((st) => drawInkStroke(ctx, st, lbInk.width, lbInk.height));
+    if (inkStroke) drawInkStroke(ctx, inkStroke, lbInk.width, lbInk.height);
+  }
+  lbInk.addEventListener('pointermove', (e) => { if (!inkStroke) return; e.preventDefault(); e.stopPropagation(); inkPoint(e); inkPaint(); });
+  lbInk.addEventListener('pointerup', (e) => { e.stopPropagation(); inkCommit(); });
+  lbInk.addEventListener('pointercancel', () => inkCommit());
+
+  // --- zoom & pan (wheel · pinch · drag) — on the wrapper so ink follows the zoom ---
   let zScale = 1, zx = 0, zy = 0;
-  const applyZoom = () => { lbImg.style.transform = `translate(${zx.toFixed(1)}px, ${zy.toFixed(1)}px) scale(${zScale.toFixed(3)})`; lbImg.style.cursor = zScale > 1 ? 'grab' : 'auto'; };
+  const applyZoom = () => { lbWrap.style.transform = `translate(${zx.toFixed(1)}px, ${zy.toFixed(1)}px) scale(${zScale.toFixed(3)})`; lbImg.style.cursor = zScale > 1 ? 'grab' : 'auto'; };
   const resetZoom = () => { zScale = 1; zx = 0; zy = 0; applyZoom(); };
   function clampPan() {
     const sr = lbStage.getBoundingClientRect();
@@ -401,12 +548,12 @@ export async function mount(root, params, ctx) {
     if (zScale <= 1.001) { zScale = 1; zx = 0; zy = 0; }
     clampPan(); applyZoom();
   }
-  lbStage.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.18 : 1 / 1.18); }, { passive: false });
-  lbImg.addEventListener('dblclick', (e) => { e.preventDefault(); zScale > 1 ? resetZoom() : zoomAt(e.clientX, e.clientY, 2.4); });
+  lbStage.addEventListener('wheel', (e) => { e.preventDefault(); if (inkOn) return; zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.18 : 1 / 1.18); }, { passive: false });
+  lbImg.addEventListener('dblclick', (e) => { e.preventDefault(); if (inkOn) return; zScale > 1 ? resetZoom() : zoomAt(e.clientX, e.clientY, 2.4); });
   const pts = new Map();
   let pinchD = 0, pinchS0 = 1, panSX = 0, panSY = 0, panZX = 0, panZY = 0, panning = false;
   lbStage.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.icon-btn')) return;
+    if (inkOn || e.target.closest('.icon-btn')) return;
     pts.set(e.pointerId, e);
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinchD = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); pinchS0 = zScale; panning = false; }
     else if (zScale > 1) { panning = true; panSX = e.clientX; panSY = e.clientY; panZX = zx; panZY = zy; lbImg.style.cursor = 'grabbing'; try { lbStage.setPointerCapture(e.pointerId); } catch {} }
@@ -463,16 +610,24 @@ export async function mount(root, params, ctx) {
     // is decoded on demand), so without this the lightbox keeps painting the
     // PREVIOUS image during the gap — the brief flash the user saw on iOS.
     lbImg.classList.remove('ready');
-    lbImg.onload = () => { if (token === showToken) lbImg.classList.add('ready'); };
+    lbImk_reset();
+    lbImg.onload = () => { if (token === showToken) { lbImg.classList.add('ready'); requestAnimationFrame(renderInk); } };
     lbImg.onerror = () => { if (token === showToken && im.thumb) lbImg.src = blobURL('thumb-' + im.id, im.thumb); };
     const url = await viewURLFor(im);
     if (token !== showToken) return;   // a newer step()/open() superseded this one
     const next = url || (im.thumb ? blobURL('thumb-' + im.id, im.thumb) : '');
-    if (lbImg.src === next && next) lbImg.classList.add('ready');   // same src won't refire onload
+    if (lbImg.src === next && next) { lbImg.classList.add('ready'); requestAnimationFrame(renderInk); }   // same src won't refire onload
     else lbImg.src = next;
   }
+  // stepping to another image: clear the old ink layer and its undo history
+  function lbImk_reset() {
+    const ctx = lbInk.getContext('2d');
+    ctx.clearRect(0, 0, lbInk.width, lbInk.height);
+    inkStroke = null; inkUndoA.length = 0; inkRedoA.length = 0;
+    if (inkOn) inkUI();
+  }
   function openLightbox(i) { lbIndex = i; showCurrent(); lightbox.classList.add('in'); document.addEventListener('keydown', lbKeys); }
-  function closeLightbox() { lightbox.classList.remove('in'); document.removeEventListener('keydown', lbKeys); }
+  function closeLightbox() { if (inkOn) toggleInk(); lightbox.classList.remove('in'); document.removeEventListener('keydown', lbKeys); }
   // when a theme is active, prev/next walk the FILTERED set (the images actually
   // on screen) rather than the whole folder order
   const matchesTag = (im) => !activeTag || (activeTag === UNTAGGED ? !(im.tags || []).length : (im.tags || []).includes(activeTag));
