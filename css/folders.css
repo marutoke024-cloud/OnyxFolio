@@ -82,6 +82,40 @@
 }
 .folder:hover .folder-name { color: var(--ink-0); }
 
+/* --- search bar: drops out from under the top bar --- */
+.folders-search {
+  position: absolute; top: calc(var(--header-h) - 2px); left: 50%; z-index: 45;
+  display: flex; align-items: center; gap: 10px;
+  width: min(520px, calc(100% - 28px)); padding: 7px 8px 7px 15px;
+  border-radius: 26px; background: rgba(16,16,20,0.92); border: 1px solid var(--line);
+  backdrop-filter: blur(12px); box-shadow: var(--shadow-lift);
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -10px);
+  transition: opacity .22s var(--ease-out), transform .22s var(--ease-out), visibility .22s;
+}
+.folders-search.show { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, 0); }
+.folders-search .fs-ico { display: inline-flex; flex-shrink: 0; color: var(--ink-2); }
+.folders-search .fs-ico svg { width: 17px; height: 17px; }
+.fs-input {
+  flex: 1; min-width: 0; background: transparent; border: none; color: var(--ink-0);
+  padding: 6px 0; letter-spacing: .02em;
+  font-size: 16px;   /* >=16px stops iOS Safari zooming the page when it focuses */
+}
+.fs-input:focus { outline: none; }
+.fs-input::placeholder { color: var(--ink-3); font-family: var(--font-ui); }
+.fs-count { flex-shrink: 0; font-size: 11px; letter-spacing: .1em; color: var(--ink-2); }
+.fs-clear {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; cursor: pointer;
+  border: none; background: var(--bg-3); color: var(--ink-2); display: grid; place-items: center;
+  transition: color .25s var(--ease-out), background .25s var(--ease-out);
+}
+.fs-clear:hover { color: var(--ink-0); background: var(--line); }
+.fs-clear svg { width: 15px; height: 15px; }
+
+/* Search results are one finite block, so they need the header clearance the
+   looping field deliberately does without (its top is faded by the stage mask). */
+.folders-plane.no-loop .folders-block { padding-top: calc(var(--header-h) + 62px); padding-bottom: 48px; }
+.folders-noresult { padding: calc(var(--header-h) + 120px) 26px 0; }
+
 /* footer hint */
 .folders-hint {
   position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 30;

@@ -4,9 +4,12 @@
 import { h, isTouch, toast, confirmModal, openModal, closeModal, qsa, rand } from '../lib/dom.js';
 import { ico, icons } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
-import { getFolder, getImages, addImage, updateImage, deleteImage, blobURL, revokeURL } from '../storage/db.js';
-import { fileToImageRecord } from '../lib/image.js';
+import { getFolder, getFolders, getImages, getAllImages, addImage, updateImage, deleteImage, blobURL, revokeURL } from '../storage/db.js';
+import { fileToImageRecord, blobToImageRecord } from '../lib/image.js';
 import { imageFileFromPasteEvent, readClipboardImageFile } from '../lib/clipboard.js';
+import { paintStrokes, drawStroke, flattenMarkup } from '../lib/markup.js';
+import { folderPicker } from '../lib/folderPicker.js';
+import { isPrivate } from '../lib/private.js';
 
 // Base element width for cloud items. The on-screen size comes from the computed
 // scale (ts = sizePx / w0), so shrinking this only shrinks each item's GPU layer
@@ -414,6 +417,7 @@ export async function mount(root, params, ctx) {
   };
   const inkUndoBtn = h('button.mk-btn', { title: 'Undo', onclick: () => inkUndo() }, [ico('undo')]);
   const inkRedoBtn = h('button.mk-btn', { title: 'Redo', onclick: () => inkRedo() }, [ico('redo')]);
+  const inkSaveBtn = h('button.mk-btn.mk-saveas', { title: '加筆した画像を別のフォルダに保存', onclick: () => openSaveCopy() }, [ico('folderIn')]);
   const lbMk = h('div.mk-menu.lb-mk', {}, [
     h('div.mk-group', {}, [inkToolB('pen', 'pen', 'マジックペン'), inkToolB('marker', 'marker', '半透明マーカー'), inkToolB('eraser', 'eraser', '消しゴム')]),
     h('div.mk-sep'),
@@ -429,6 +433,8 @@ export async function mount(root, params, ctx) {
     h('div.mk-sep'),
     h('div.mk-group', {}, [inkUndoBtn, inkRedoBtn]),
     h('div.mk-sep'),
+    h('div.mk-group', {}, [inkSaveBtn]),
+    h('div.mk-sep'),
     h('button.mk-done', { onclick: () => toggleInk() }, [ico('check'), h('span', { text: '完了' })]),
   ]);
   lightbox.append(lbMk);
@@ -440,20 +446,7 @@ export async function mount(root, params, ctx) {
     lbMk.classList.toggle('mk-eraser', inkState.tool === 'eraser');
     inkUndoBtn.disabled = !inkUndoA.length;
     inkRedoBtn.disabled = !inkRedoA.length;
-  }
-  function drawInkStroke(ctx, st, W, H) {
-    const pts = st.points || []; if (!pts.length) return;
-    ctx.save();
-    ctx.globalCompositeOperation = st.tool === 'eraser' ? 'destination-out' : 'source-over';
-    ctx.globalAlpha = st.tool === 'marker' ? 0.38 : 1;
-    ctx.strokeStyle = st.color || '#ff3b30';
-    ctx.lineWidth = Math.max(1, (st.width || 0.012) * W);
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath();
-    pts.forEach((p, i) => { const x = p[0] * W, y = p[1] * H; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-    if (pts.length === 1) ctx.lineTo(pts[0][0] * W + 0.1, pts[0][1] * H);
-    ctx.stroke();
-    ctx.restore();
+    inkSaveBtn.disabled = !((images[lbIndex]?.markup || []).length);
   }
   // pin the canvas onto the displayed image box, then paint the saved strokes
   function renderInk() {
@@ -467,9 +460,7 @@ export async function mount(root, params, ctx) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const W = Math.round(cw * dpr), H = Math.round(ch * dpr);
     if (lbInk.width !== W || lbInk.height !== H) { lbInk.width = W; lbInk.height = H; }
-    const ctx = lbInk.getContext('2d');
-    ctx.clearRect(0, 0, W, H);
-    (im.markup || []).forEach((st) => drawInkStroke(ctx, st, W, H));
+    paintStrokes(lbInk.getContext('2d'), im.markup, W, H);
   }
   function inkCommit() {
     const im = images[lbIndex]; if (!im || !inkStroke || !inkStroke.points.length) { inkStroke = null; return; }
@@ -522,13 +513,79 @@ export async function mount(root, params, ctx) {
   function inkPaint() {
     const im = images[lbIndex]; if (!im) return;
     const ctx = lbInk.getContext('2d');
-    ctx.clearRect(0, 0, lbInk.width, lbInk.height);
-    (im.markup || []).forEach((st) => drawInkStroke(ctx, st, lbInk.width, lbInk.height));
-    if (inkStroke) drawInkStroke(ctx, inkStroke, lbInk.width, lbInk.height);
+    paintStrokes(ctx, im.markup, lbInk.width, lbInk.height);
+    if (inkStroke) drawStroke(ctx, inkStroke, lbInk.width, lbInk.height);
   }
   lbInk.addEventListener('pointermove', (e) => { if (!inkStroke) return; e.preventDefault(); e.stopPropagation(); inkPoint(e); inkPaint(); });
   lbInk.addEventListener('pointerup', (e) => { e.stopPropagation(); inkCommit(); });
   lbInk.addEventListener('pointercancel', () => inkCommit());
+
+  // --- file the marked-up picture as a NEW image in another folder ---
+  // Nothing is moved: the copy is a freshly flattened render, so the source photo
+  // keeps its own folder and its own untouched bytes. Optionally the source's ink
+  // is lifted afterwards, leaving it exactly as it was before the pen came out.
+  async function openSaveCopy() {
+    const im = images[lbIndex]; if (!im) return;
+    if (!(im.markup || []).length) { toast('この画像にはまだ加筆がありません。'); return; }
+
+    const [allFolders, allImgs] = await Promise.all([getFolders(), getAllImages()]);
+    const counts = new Map();
+    allImgs.forEach((x) => counts.set(x.folderId, (counts.get(x.folderId) || 0) + 1));
+    // same visibility rule the Folders view uses — private folders must not surface
+    // (by name or by count) while private mode is off
+    const priv = isPrivate();
+    const choices = allFolders.filter((f) => priv ? f.private : !f.private);
+
+    const saveBtn = h('button.btn.btn-accent', { text: '保存', disabled: true, onclick: () => run() });
+    const picker = folderPicker({
+      folders: choices, currentId: folderId, counts, newIsPrivate: priv,
+      onChange: (ok) => { saveBtn.disabled = !ok; },
+    });
+    const nameInput = h('input.field.jp', { value: im.name || '', placeholder: 'Untitled', spellcheck: false });
+    let clearOriginal = true;
+    const clearToggle = h('button.toggle.on', { type: 'button', onclick: () => { clearOriginal = !clearOriginal; clearToggle.classList.toggle('on', clearOriginal); } }, [h('span.knob')]);
+
+    let busy = false;
+    async function run() {
+      if (busy) return;
+      busy = true; saveBtn.disabled = true; saveBtn.textContent = '保存中…';
+      try {
+        // flatten before resolving, so a failed render can't leave behind the
+        // brand-new empty folder the picker would have just created
+        const { blob } = await flattenMarkup(im);
+        const dest = await picker.resolve();
+        if (!dest) { toast('保存先のフォルダを選んでください。', { error: true }); return; }
+        const rec = await blobToImageRecord(blob, dest.id, { name: nameInput.value.trim() || im.name || '' });
+        await addImage({ ...rec, tags: [...(im.tags || [])] });
+        if (clearOriginal) {
+          im.markup = [];
+          await updateImage(im.id, { markup: [] });
+          inkUndoA.length = 0; inkRedoA.length = 0;
+        }
+        closeModal();
+        if (dest.id === folderId) await reload();   // the copy landed in this very folder
+        renderInk(); inkUI();
+        toast(`「${dest.name}」に保存しました。`);
+      } catch (e) {
+        console.error('save copy failed', e);
+        toast('保存できませんでした。', { error: true });
+      } finally {
+        busy = false; saveBtn.textContent = '保存'; saveBtn.disabled = !picker.valid();
+      }
+    }
+
+    openModal(h('div.modal', {}, [
+      h('h2.display', { text: '加筆した画像を保存' }),
+      h('p.modal-sub', { text: '加筆を焼き込んだ複製を保存します。元の画像は今のフォルダにそのまま残ります。' }),
+      h('div.row', {}, [h('label', { text: 'Name' }), nameInput]),
+      h('div.row', {}, [h('label', { text: '保存先フォルダ' }), picker.el]),
+      h('div.row.toggle-row', {}, [h('label', { text: '保存したら、元の画像から加筆を消す' }), clearToggle]),
+      h('div.modal-actions', {}, [
+        h('button.btn.btn-ghost', { text: 'Cancel', onclick: () => closeModal() }),
+        saveBtn,
+      ]),
+    ]));
+  }
 
   // --- zoom & pan (wheel · pinch · drag) — on the wrapper so ink follows the zoom ---
   let zScale = 1, zx = 0, zy = 0;

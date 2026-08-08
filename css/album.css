@@ -159,6 +159,9 @@
 .mk-menu.lb-mk { z-index: 140; }
 .mk-menu.show { opacity: 1; pointer-events: auto; transform: translateX(0) translateY(-50%); }
 .lb-penbtn.on { background: var(--accent); color: var(--bg-0); border-color: var(--accent); }
+/* "file this markup into another folder" — the one action that leaves the canvas */
+.mk-btn.mk-saveas { color: var(--accent); }
+.mk-btn.mk-saveas:hover { background: rgba(205,184,154,0.18); }
 .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; }
 .lb-nav.prev { left: 14px; } .lb-nav.next { right: 14px; }
 .lb-tools { position: fixed; top: 16px; left: 16px; z-index: 3; display: flex; gap: 8px; }

@@ -116,6 +116,7 @@ body {
 }
 .btn:hover { border-color: var(--ink-1); background: var(--bg-3); }
 .btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .35; pointer-events: none; }
 .btn-ghost { border-color: transparent; color: var(--ink-2); padding: 10px 14px; }
 .btn-ghost:hover { color: var(--ink-0); background: var(--bg-2); }
 .btn-accent { border-color: var(--accent); color: var(--accent); }
@@ -215,6 +216,30 @@ input.field::placeholder, textarea.field::placeholder { color: var(--ink-3); }
 .modal .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
 .modal .row.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .modal .row.toggle-row label { margin-bottom: 0; text-transform: none; letter-spacing: .02em; font-size: 12px; color: var(--ink-1); }
+
+/* --- Folder picker (destination chooser inside a modal) --- */
+.fp { display: flex; flex-direction: column; gap: 10px; }
+.fp-list {
+  display: flex; flex-direction: column; gap: 2px;
+  max-height: min(300px, 32dvh); overflow-y: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--line); border-radius: 4px; padding: 6px; background: var(--bg-0);
+}
+.fp-item {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  padding: 7px 10px; border-radius: 4px; cursor: pointer;
+  border: 1px solid transparent; background: transparent; color: var(--ink-1);
+  transition: background .2s var(--ease-out), border-color .2s var(--ease-out);
+}
+.fp-item:hover { background: var(--bg-2); color: var(--ink-0); }
+.fp-item.on { border-color: var(--accent); background: rgba(205,184,154,0.09); color: var(--ink-0); }
+.fp-art { width: 34px; height: 26px; object-fit: contain; flex-shrink: 0; display: block; }
+.fp-newico { width: 34px; display: grid; place-items: center; flex-shrink: 0; color: var(--accent); }
+.fp-name { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-here { flex-shrink: 0; font-size: 10px; letter-spacing: .08em; color: var(--ink-3); }
+.fp-count { flex-shrink: 0; font-size: 11px; letter-spacing: .08em; color: var(--ink-3); min-width: 2ch; text-align: right; }
+.fp-item.on .fp-count { color: var(--accent); }
+.fp-newrow { display: none; }
+.fp-newrow.show { display: block; }
 
 /* --- Toast --- */
 .toast-wrap { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }

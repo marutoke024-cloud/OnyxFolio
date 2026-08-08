@@ -1,9 +1,9 @@
 // Folders view — a packed, slowly looping grid of designed folder icons.
-import { h, isTouch, toast, promptModal, confirmModal, openModal, closeModal } from '../lib/dom.js';
+import { h, isTouch, toast, matchesSearch, promptModal, confirmModal, openModal, closeModal } from '../lib/dom.js';
 import { ico } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import { getFolders, addFolder, updateFolder, deleteFolder, getAllImages } from '../storage/db.js';
-import { FOLDER_DESIGNS, seedDesigns, SEED_EXCLUDE } from '../lib/folderDesigns.js';
+import { FOLDER_DESIGNS, folderIconFile, seedDesigns, SEED_EXCLUDE } from '../lib/folderDesigns.js';
 import { isPrivate } from '../lib/private.js';
 
 export async function mount(root, params, ctx) {
@@ -40,26 +40,51 @@ export async function mount(root, params, ctx) {
   const stage = h('div.folders-stage', {}, [plane]);
   const hint = h('div.folders-hint', { text: isTouch ? 'Drag to scroll · tap to open · hold to edit' : 'Scroll or drag · click to open · right-click to edit' });
 
+  // --- search bar: filters the field by folder name, kana/case/width insensitive ---
+  // English placeholder on purpose: a CJK one would render in the bundled 35 MB
+  // Jinghua face (.jp) and pull the whole font down just for a hint string.
+  const searchInput = h('input.fs-input.jp', { placeholder: 'Search folders…', spellcheck: false, autocomplete: 'off', enterkeyhint: 'search' });
+  const searchCount = h('span.fs-count');
+  const searchBar = h('div.folders-search', {}, [
+    ico('search', 'fs-ico'),
+    searchInput,
+    searchCount,
+    h('button.fs-clear', { type: 'button', title: 'Clear', onclick: () => closeSearch() }, [ico('close')]),
+  ]);
+
   const topbar = buildTopbar({
     crumbs: [{ label: 'Folders' }],
     actions: [
+      { icon: 'search', title: 'Search folders', onClick: () => toggleSearch() },
       { icon: 'book', title: 'Portfolios', onClick: () => ctx.nav('/portfolio') },
       { icon: 'plus', label: 'New', accent: true, onClick: onNew },
     ],
   });
-  root.append(stage, topbar, hint);
+  root.append(stage, topbar, searchBar, hint);
+
+  let query = '';
+  function openSearch() {
+    searchBar.classList.add('show');
+    setTimeout(() => searchInput.focus(), 60);
+  }
+  function closeSearch() {
+    searchBar.classList.remove('show');
+    searchInput.blur();
+    if (query) { searchInput.value = ''; query = ''; render(); }
+  }
+  function toggleSearch() { searchBar.classList.contains('show') ? closeSearch() : openSearch(); }
+  searchInput.addEventListener('input', () => { query = searchInput.value; render(); });
+  searchInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
 
   // --- motion state: drag / flick / wheel to scroll, seamless wrap loop kept,
   //     but NO idle auto-scroll → rAF only runs while a flick is decelerating ---
-  let y = 0, blockH = 0, running = false, raf = 0, last = 0;
+  let y = 0, blockH = 0, running = false, raf = 0, last = 0, looping = true;
   let dragging = false, downY = 0, downX = 0, baseY = 0, lastMoveY = 0, lastMoveT = 0, momentum = 0, moved = false, longTimer = 0;
-
-  const iconFile = (f, i) => f.icon || FOLDER_DESIGNS[(f.order ?? i) % FOLDER_DESIGNS.length].file;
 
   function folderCard(f, i) {
     return h('div.folder', { dataset: { id: f.id } }, [
       h('div.folder-thumb', {}, [
-        h('img', { src: 'assets/folders/' + iconFile(f, i), alt: '', loading: 'lazy', decoding: 'async', draggable: false }),
+        h('img', { src: 'assets/folders/' + folderIconFile(f, i), alt: '', loading: 'lazy', decoding: 'async', draggable: false }),
         f.private ? h('span.folder-private', { text: '♥', title: 'Private' }) : null,
       ]),
       h('div.folder-name.jp', { text: f.name }),
@@ -78,33 +103,55 @@ export async function mount(root, params, ctx) {
     return out;
   }
 
-  function buildPlane(data) {
+  // `loop: false` (search results) shows the matches once — no row padding and no
+  // clones, since either would put the same folder on screen twice.
+  function buildPlane(data, { loop = true } = {}) {
     stopLoop();
+    looping = loop;
+    plane.classList.toggle('no-loop', !loop);
     plane.innerHTML = '';
     let master = renderBlock(data);
     plane.append(master);
-    // pad to a whole number of columns now that the grid has laid out
-    const padded = padRows(data, colsOf(master));
-    if (padded.length !== data.length) {
-      master.remove();
-      master = renderBlock(padded);
-      plane.append(master);
+    if (loop) {
+      // pad to a whole number of columns now that the grid has laid out
+      const padded = padRows(data, colsOf(master));
+      if (padded.length !== data.length) {
+        master.remove();
+        master = renderBlock(padded);
+        plane.append(master);
+      }
     }
     // offsetHeight forces a synchronous layout, so measure right away — no rAF,
     // which would be starved while the tab is hidden and never start the drift.
     const stageH = stage.clientHeight || window.innerHeight || 800;
     blockH = master.offsetHeight || stageH;
-    const repeats = Math.max(2, Math.ceil(stageH / blockH) + 1);
-    for (let r = 1; r < repeats; r++) {
-      const clone = master.cloneNode(true);
-      clone.setAttribute('aria-hidden', 'true');
-      plane.append(clone);
+    if (loop) {
+      const repeats = Math.max(2, Math.ceil(stageH / blockH) + 1);
+      for (let r = 1; r < repeats; r++) {
+        const clone = master.cloneNode(true);
+        clone.setAttribute('aria-hidden', 'true');
+        plane.append(clone);
+      }
     }
     y = 0; running = true; applyTransform();
   }
+  // nothing to lay out — a note instead of a plane that would tile empty blocks
+  function showEmpty(text) {
+    stopLoop(); momentum = 0;
+    looping = false; blockH = 0; y = 0;
+    plane.classList.add('no-loop');
+    plane.innerHTML = '';
+    plane.append(h('div.folders-noresult.empty-note', { text }));
+    applyTransform();
+  }
   function stopLoop() { cancelAnimationFrame(raf); raf = 0; }
 
-  function wrap() { if (blockH) { while (y <= -blockH) y += blockH; while (y > 0) y -= blockH; } }
+  function wrap() {
+    if (looping) { if (blockH) { while (y <= -blockH) y += blockH; while (y > 0) y -= blockH; } return; }
+    // a single, finite block: clamp at both ends instead of tiling round
+    const stageH = stage.clientHeight || window.innerHeight || 800;
+    y = Math.min(0, Math.max(Math.min(0, stageH - blockH), y));
+  }
   function applyTransform() { wrap(); plane.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`; }
   // run a frame loop ONLY while a flick is decelerating; idle = no rAF (no repaint cost)
   function momentumLoop(now) {
@@ -213,19 +260,36 @@ export async function mount(root, params, ctx) {
     const d = FOLDER_DESIGNS[used % FOLDER_DESIGNS.length];
     await addFolder(name || 'Untitled', d.file);
     toast('Folder created.');
+    // drop any active filter — a brand new folder that doesn't match the query
+    // would otherwise be created into an empty-looking screen
+    searchInput.value = ''; query = '';
     await render();
+  }
+  // lay out whatever `lastData` currently holds (also the resize path)
+  function rebuild() {
+    const q = query.trim();
+    searchCount.textContent = q ? `${lastData.length}件` : '';
+    hint.classList.toggle('hidden', !!q);
+    if (!lastData.length) {
+      showEmpty(q ? `「${q}」に一致するフォルダはありません。`
+                  : isPrivate() ? 'プライベートのフォルダはまだありません。' : 'フォルダがありません。');
+      return;
+    }
+    buildPlane(lastData, { loop: !q });
   }
   async function render() {
     folders = await getFolders();
     // normal → only non-private; private mode → only the private ones
-    lastData = folders.filter((f) => isPrivate() ? f.private : !f.private);
-    buildPlane(lastData);
+    const visible = folders.filter((f) => isPrivate() ? f.private : !f.private);
+    const q = query.trim();
+    lastData = q ? visible.filter((f) => matchesSearch(f.name, q)) : visible;
+    rebuild();
   }
 
   // --- lifecycle ---
   const onVis = () => { if (document.hidden) stopLoop(); };
   document.addEventListener('visibilitychange', onVis);
-  let rT; const onResize = () => { clearTimeout(rT); rT = setTimeout(() => lastData.length && buildPlane(lastData), 220); };
+  let rT; const onResize = () => { clearTimeout(rT); rT = setTimeout(rebuild, 220); };
   window.addEventListener('resize', onResize);
   const onPriv = () => render();
   window.addEventListener('onyx-private-change', onPriv);
