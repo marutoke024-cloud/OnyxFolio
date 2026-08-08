@@ -25,6 +25,11 @@ HTML / CSS / ES modules, no framework, no toolchain.
    it on the spot if it doesn't exist yet). The copy is a fresh render; the source
    photo keeps its own folder and its own untouched bytes, and its ink is lifted
    afterwards unless you ask to keep it.
+   While the pen is out, **◐** fades the photo to 25 % over a pale ground so the ink
+   reads like lines on tracing paper — a viewing aid only, the saved copy always
+   flattens the photo at full strength. Two fingers pinch to zoom and pan at any
+   time, markup mode included; one finger (or a pencil) keeps drawing, and strokes
+   land in the same place whatever the zoom.
 4. **Portfolio** — an editable lookbook that **turns like a real book**
    (two‑page spread on tablet/desktop, single page on phones). Pick a layout per
    page, drop in images, and type directly onto the page. Pages, layouts and tone

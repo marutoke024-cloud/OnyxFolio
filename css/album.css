@@ -150,9 +150,18 @@
   display: flex; align-items: center; justify-content: center;
   transform-origin: center center; transition: transform .09s ease-out; will-change: transform;
 }
-.lb-stage img { max-width: 100%; max-height: 100%; min-height: 0; min-width: 0; object-fit: contain; border-radius: 3px; box-shadow: var(--shadow-lift); transition: opacity .16s ease; opacity: 0; }
+.lb-stage img { position: relative; z-index: 1; max-width: 100%; max-height: 100%; min-height: 0; min-width: 0; object-fit: contain; border-radius: 3px; box-shadow: var(--shadow-lift); transition: opacity .25s ease; opacity: 0; }
 .lb-stage img.ready { opacity: 1; }
-/* the ink layer is pinned onto the displayed image box by JS */
+/* Tracing mode: the photo drops to --lb-dim (set from JS) over the pale plate
+   below it, so it washes out toward light instead of sinking into the dark. */
+.lb-stage img.ready.dim { opacity: var(--lb-dim, .25); }
+/* plate + ink layer are both pinned onto the displayed image box by JS */
+.lb-plate {
+  position: absolute; z-index: 0; pointer-events: none; border-radius: 3px;
+  background: #eceae3; box-shadow: var(--shadow-lift);
+  opacity: 0; transition: opacity .25s var(--ease-out);
+}
+.lb-plate.show { opacity: 1; }
 .lb-ink { position: absolute; z-index: 2; pointer-events: none; touch-action: none; }
 .lb-ink.drawing { pointer-events: auto; cursor: crosshair; }
 /* album's markup toolbar sits above the lightbox (120) and shows via .show */
@@ -162,6 +171,9 @@
 /* "file this markup into another folder" — the one action that leaves the canvas */
 .mk-btn.mk-saveas { color: var(--accent); }
 .mk-btn.mk-saveas:hover { background: rgba(205,184,154,0.18); }
+/* latching toggles in the pen toolbar (photo-dimming) */
+.mk-btn.on { background: #fff; color: #1c1c1e; }
+.mk-btn.on:hover { background: #fff; }
 .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; }
 .lb-nav.prev { left: 14px; } .lb-nav.next { right: 14px; }
 .lb-tools { position: fixed; top: 16px; left: 16px; z-index: 3; display: flex; gap: 8px; }

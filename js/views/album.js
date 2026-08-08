@@ -383,8 +383,12 @@ export async function mount(root, params, ctx) {
   let lbIndex = -1;
   const lbImg = h('img', { alt: '' });
   const lbInk = h('canvas.lb-ink');
-  // wrapper carries the zoom transform so image and ink scale together
-  const lbWrap = h('div.lb-imgwrap', {}, [lbImg, lbInk]);
+  // A pale plate behind the picture. Invisible at full strength; once the photo is
+  // dimmed for tracing it is what the photo fades INTO, so the result washes out
+  // toward light (tracing paper) instead of sinking into the near-black lightbox.
+  const lbPlate = h('div.lb-plate');
+  // wrapper carries the zoom transform so plate, image and ink scale together
+  const lbWrap = h('div.lb-imgwrap', {}, [lbPlate, lbImg, lbInk]);
   const lbClose = h('button.icon-btn.lb-close', { onclick: closeLightbox }, [ico('close')]);
   const lbStage = h('div.lb-stage', {}, [
     lbWrap,
@@ -409,7 +413,15 @@ export async function mount(root, params, ctx) {
   const INK_WIDTHS = [0.006, 0.012, 0.024];
   const inkState = { tool: 'pen', color: '#ff3b30', width: 0.012 };
   let inkOn = false, inkStroke = null;
+  // One click drops the photo to this, so the ink reads clearly over it. It is a
+  // viewing aid only — the saved copy always flattens the photo at full strength.
+  const DIM_ALPHA = 0.25;
+  lbImg.style.setProperty('--lb-dim', String(DIM_ALPHA));   // one source of truth for the fade
+  let dimOn = false;
   const inkUndoA = [], inkRedoA = [];
+  // every pointer currently down on the lightbox, wherever it landed — the ink
+  // canvas and the stage both feed this so a two-finger pinch works across both
+  const pts = new Map();
   const inkToolBtns = {}, inkColorBtns = new Map(), inkWidthBtns = new Map();
   const inkToolB = (tool, icon, label) => {
     const b = h('button.mk-tool', { title: label, onclick: () => { inkState.tool = tool; inkUI(); } }, [ico(icon)]);
@@ -418,6 +430,7 @@ export async function mount(root, params, ctx) {
   const inkUndoBtn = h('button.mk-btn', { title: 'Undo', onclick: () => inkUndo() }, [ico('undo')]);
   const inkRedoBtn = h('button.mk-btn', { title: 'Redo', onclick: () => inkRedo() }, [ico('redo')]);
   const inkSaveBtn = h('button.mk-btn.mk-saveas', { title: '加筆した画像を別のフォルダに保存', onclick: () => openSaveCopy() }, [ico('folderIn')]);
+  const inkDimBtn = h('button.mk-btn.mk-dim', { title: `写真を薄くする（不透明度 ${Math.round(DIM_ALPHA * 100)}%）— 加筆を見やすく`, onclick: () => toggleDim() }, [ico('contrast')]);
   const lbMk = h('div.mk-menu.lb-mk', {}, [
     h('div.mk-group', {}, [inkToolB('pen', 'pen', 'マジックペン'), inkToolB('marker', 'marker', '半透明マーカー'), inkToolB('eraser', 'eraser', '消しゴム')]),
     h('div.mk-sep'),
@@ -430,6 +443,8 @@ export async function mount(root, params, ctx) {
       const b = h('button.mk-width', { onclick: () => { inkState.width = wv; inkUI(); } }, [h('span.mk-wdot')]);
       inkWidthBtns.set(wv, b); return b;
     })),
+    h('div.mk-sep'),
+    h('div.mk-group', {}, [inkDimBtn]),
     h('div.mk-sep'),
     h('div.mk-group', {}, [inkUndoBtn, inkRedoBtn]),
     h('div.mk-sep'),
@@ -448,20 +463,33 @@ export async function mount(root, params, ctx) {
     inkRedoBtn.disabled = !inkRedoA.length;
     inkSaveBtn.disabled = !((images[lbIndex]?.markup || []).length);
   }
+  // lay an overlay exactly over the displayed picture (the <img> box, which
+  // `object-fit: contain` may leave smaller than the wrapper)
+  function pinToImage(el, cw, ch) {
+    el.style.left = lbImg.offsetLeft + 'px';
+    el.style.top = lbImg.offsetTop + 'px';
+    el.style.width = cw + 'px';
+    el.style.height = ch + 'px';
+  }
   // pin the canvas onto the displayed image box, then paint the saved strokes
   function renderInk() {
     const im = images[lbIndex]; if (!im) return;
     const cw = lbImg.clientWidth, ch = lbImg.clientHeight;
     if (!cw || !ch) { lbInk.width = lbInk.height = 0; return; }
-    lbInk.style.left = lbImg.offsetLeft + 'px';
-    lbInk.style.top = lbImg.offsetTop + 'px';
-    lbInk.style.width = cw + 'px';
-    lbInk.style.height = ch + 'px';
+    pinToImage(lbInk, cw, ch);
+    pinToImage(lbPlate, cw, ch);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const W = Math.round(cw * dpr), H = Math.round(ch * dpr);
     if (lbInk.width !== W || lbInk.height !== H) { lbInk.width = W; lbInk.height = H; }
     paintStrokes(lbInk.getContext('2d'), im.markup, W, H);
   }
+  // fade the photo toward the pale plate so the ink stands out while tracing
+  function applyDim() {
+    lbImg.classList.toggle('dim', dimOn);
+    lbPlate.classList.toggle('show', dimOn);
+    inkDimBtn.classList.toggle('on', dimOn);
+  }
+  function toggleDim() { dimOn = !dimOn; applyDim(); }
   function inkCommit() {
     const im = images[lbIndex]; if (!im || !inkStroke || !inkStroke.points.length) { inkStroke = null; return; }
     im.markup = im.markup || [];
@@ -490,12 +518,22 @@ export async function mount(root, params, ctx) {
     inkBtn.classList.toggle('on', inkOn);
     lbMk.classList.toggle('show', inkOn);
     lbInk.classList.toggle('drawing', inkOn);
-    if (inkOn) { resetZoom(); inkUndoA.length = 0; inkRedoA.length = 0; inkUI(); renderInk(); }
+    // the zoom is deliberately left as it is — pinching is part of drawing now,
+    // so a picture framed before reaching for the pen stays framed
+    if (inkOn) { inkUndoA.length = 0; inkRedoA.length = 0; inkUI(); renderInk(); }
+    else dimOn = false;              // the fade is a drawing aid, not a view mode
+    applyDim();
     // strokes were saved per-commit; toggling off just hides the tools
   }
+  // While the pen is out one pointer draws and two pinch-zoom, so an iPad can
+  // reframe mid-sketch without leaving markup mode. Strokes are normalized against
+  // the canvas's on-screen rect, which already carries the zoom → drawing zoomed in
+  // lands in exactly the same place.
   lbInk.addEventListener('pointerdown', (e) => {
     if (!inkOn) return;
     e.preventDefault(); e.stopPropagation();
+    pts.set(e.pointerId, e);
+    if (pts.size >= 2) { inkAbort(); pinchStart(); return; }   // a second finger means zoom, not ink
     renderInk();   // make sure the canvas is sized before the first point lands
     const base = inkState.width;
     const w = inkState.tool === 'marker' ? base * 2.6 : inkState.tool === 'eraser' ? base * 3.2 : base;
@@ -503,6 +541,8 @@ export async function mount(root, params, ctx) {
     inkPoint(e); inkPaint();
     try { lbInk.setPointerCapture(e.pointerId); } catch {}
   });
+  // drop an in-progress stroke without committing it (the pinch took over)
+  function inkAbort() { inkStroke = null; inkPaint(); }
   function inkPoint(e) {
     const r = lbInk.getBoundingClientRect();
     inkStroke.points.push([
@@ -516,9 +556,18 @@ export async function mount(root, params, ctx) {
     paintStrokes(ctx, im.markup, lbInk.width, lbInk.height);
     if (inkStroke) drawStroke(ctx, inkStroke, lbInk.width, lbInk.height);
   }
-  lbInk.addEventListener('pointermove', (e) => { if (!inkStroke) return; e.preventDefault(); e.stopPropagation(); inkPoint(e); inkPaint(); });
-  lbInk.addEventListener('pointerup', (e) => { e.stopPropagation(); inkCommit(); });
-  lbInk.addEventListener('pointercancel', () => inkCommit());
+  lbInk.addEventListener('pointermove', (e) => {
+    if (!inkOn) return;
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, e);
+    if (pts.size >= 2) { e.preventDefault(); e.stopPropagation(); pinchMove(); return; }
+    if (!inkStroke) return;
+    e.preventDefault(); e.stopPropagation(); inkPoint(e); inkPaint();
+  });
+  // Lifting one finger of a pinch leaves the other down with no stroke — we don't
+  // start drawing from it, so the gesture ends cleanly instead of leaving a scrawl.
+  const inkEnd = (e) => { pts.delete(e.pointerId); inkCommit(); };
+  lbInk.addEventListener('pointerup', (e) => { e.stopPropagation(); inkEnd(e); });
+  lbInk.addEventListener('pointercancel', (e) => inkEnd(e));
 
   // --- file the marked-up picture as a NEW image in another folder ---
   // Nothing is moved: the copy is a freshly flattened render, so the source photo
@@ -605,23 +654,52 @@ export async function mount(root, params, ctx) {
     if (zScale <= 1.001) { zScale = 1; zx = 0; zy = 0; }
     clampPan(); applyZoom();
   }
-  lbStage.addEventListener('wheel', (e) => { e.preventDefault(); if (inkOn) return; zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.18 : 1 / 1.18); }, { passive: false });
+  // Two-finger gesture: scale about the fingers AND follow their midpoint, so a
+  // pinch zooms and pans in one motion. `pts` is shared with the ink canvas, so a
+  // gesture works whether the fingers land on the picture or on the dark margin.
+  let pinchD = 0, pinchS0 = 1, pinchMX = 0, pinchMY = 0, pinchZX = 0, pinchZY = 0;
+  let panSX = 0, panSY = 0, panZX = 0, panZY = 0, panning = false;
+  const twoPts = () => [...pts.values()].slice(0, 2);
+  const midOf = (a, b) => {
+    const sr = lbStage.getBoundingClientRect();
+    return [(a.clientX + b.clientX) / 2 - (sr.left + sr.width / 2), (a.clientY + b.clientY) / 2 - (sr.top + sr.height / 2)];
+  };
+  function pinchStart() {
+    const [a, b] = twoPts(); if (!a || !b) return;
+    pinchD = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+    pinchS0 = zScale;
+    [pinchMX, pinchMY] = midOf(a, b);
+    pinchZX = zx; pinchZY = zy;
+    panning = false;
+  }
+  function pinchMove() {
+    const [a, b] = twoPts(); if (!a || !b) return;
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+    const [mx, my] = midOf(a, b);
+    const ns = Math.max(1, Math.min(6, pinchS0 * d / pinchD));
+    // keep the content that was under the fingers under them, at the new scale
+    const k = ns / pinchS0;
+    zx = mx - (pinchMX - pinchZX) * k;
+    zy = my - (pinchMY - pinchZY) * k;
+    zScale = ns;
+    if (zScale <= 1.001) { zScale = 1; zx = 0; zy = 0; }
+    clampPan(); applyZoom();
+  }
+  lbStage.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.18 : 1 / 1.18); }, { passive: false });
   lbImg.addEventListener('dblclick', (e) => { e.preventDefault(); if (inkOn) return; zScale > 1 ? resetZoom() : zoomAt(e.clientX, e.clientY, 2.4); });
-  const pts = new Map();
-  let pinchD = 0, pinchS0 = 1, panSX = 0, panSY = 0, panZX = 0, panZY = 0, panning = false;
   lbStage.addEventListener('pointerdown', (e) => {
-    if (inkOn || e.target.closest('.icon-btn')) return;
+    if (e.target.closest('.icon-btn')) return;
     pts.set(e.pointerId, e);
-    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinchD = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); pinchS0 = zScale; panning = false; }
-    else if (zScale > 1) { panning = true; panSX = e.clientX; panSY = e.clientY; panZX = zx; panZY = zy; lbImg.style.cursor = 'grabbing'; try { lbStage.setPointerCapture(e.pointerId); } catch {} }
+    // a second pointer always means "pinch", even mid-stroke — the ink canvas only
+    // sees fingers that land on the picture itself, so this catches the rest
+    if (pts.size >= 2) { if (inkOn) inkAbort(); pinchStart(); return; }
+    if (inkOn) return;                 // single pointer while drawing belongs to the canvas
+    if (zScale > 1) { panning = true; panSX = e.clientX; panSY = e.clientY; panZX = zx; panZY = zy; lbImg.style.cursor = 'grabbing'; try { lbStage.setPointerCapture(e.pointerId); } catch {} }
   });
   lbStage.addEventListener('pointermove', (e) => {
     if (pts.has(e.pointerId)) pts.set(e.pointerId, e);
-    if (pts.size === 2) {
-      const [a, b] = [...pts.values()];
-      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      zoomAt((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2, (Math.max(1, Math.min(6, pinchS0 * d / (pinchD || 1)))) / zScale);
-    } else if (panning) { zx = panZX + (e.clientX - panSX); zy = panZY + (e.clientY - panSY); clampPan(); applyZoom(); }
+    if (pts.size >= 2) pinchMove();
+    else if (panning) { zx = panZX + (e.clientX - panSX); zy = panZY + (e.clientY - panSY); clampPan(); applyZoom(); }
   });
   const endPt = (e) => { pts.delete(e.pointerId); if (pts.size < 2) { panning = false; lbImg.style.cursor = zScale > 1 ? 'grab' : 'auto'; } };
   lbStage.addEventListener('pointerup', endPt);
