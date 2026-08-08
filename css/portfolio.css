@@ -307,6 +307,20 @@
   border-radius: 18px; background: rgba(28,28,32,.82); border: 1px solid rgba(255,255,255,.12);
   backdrop-filter: blur(14px); box-shadow: 0 10px 40px rgba(0,0,0,.5);
   opacity: 0; pointer-events: none; transition: opacity .22s var(--ease-out), transform .22s var(--ease-out);
+  /* the column of tools is taller than a phone in landscape — scroll it rather
+     than let the ends run off the screen */
+  max-height: calc(100dvh - 20px); overflow-y: auto; overscroll-behavior: contain;
+}
+.mk-menu::-webkit-scrollbar { width: 0; }
+/* short viewports (phone landscape, split view): the same tools, tightened up */
+@media (max-height: 720px) {
+  .mk-menu { gap: 5px; padding: 7px 6px; border-radius: 15px; }
+  .mk-group { gap: 4px; }
+  .mk-colors, .mk-widths { gap: 5px; }
+  .mk-tool, .mk-btn { width: 34px; height: 34px; border-radius: 9px; }
+  .mk-tool svg, .mk-btn svg { width: 19px; height: 19px; }
+  .mk-color { width: 21px; height: 21px; }
+  .mk-width { height: 18px; }
 }
 .pf-editor.markup-mode ~ .mk-menu { opacity: 1; pointer-events: auto; transform: translateX(0) translateY(-50%); }
 .mk-group { display: flex; flex-direction: column; align-items: center; gap: 6px; }

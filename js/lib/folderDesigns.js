@@ -29,6 +29,9 @@ export const FOLDER_DESIGNS = NAMES.map((name, i) => ({
   name,
 }));
 
+/** The art file a folder shows — its own pick, else one derived from its position. */
+export const folderIconFile = (f, i = 0) => f.icon || FOLDER_DESIGNS[(f.order ?? i) % FOLDER_DESIGNS.length].file;
+
 /** Interleave the three themes so a fresh grid shows a varied mix. */
 export const SEED_EXCLUDE = [
   'Band Tee', 'Dried Wild Mushrooms', 'Farm-Fresh Eggs', 'Dried Kitchen Herbs',

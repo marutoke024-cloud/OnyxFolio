@@ -2,7 +2,7 @@
 
 const THUMB_MAX = 420;   // px on the long edge for grid/folder previews (small = cheap to decode in bulk)
 
-async function decode(file) {
+export async function decodeImage(file) {
   if ('createImageBitmap' in window) {
     try { return await createImageBitmap(file); } catch { /* fall through */ }
   }
@@ -26,9 +26,9 @@ function drawToBlob(source, w, h, type = 'image/jpeg', quality = 0.86) {
   return new Promise((res) => canvas.toBlob((b) => res(b), type, quality));
 }
 
-/** Turn a user File into an image record ready for db.addImage(). */
-export async function fileToImageRecord(file, folderId) {
-  const bitmap = await decode(file);
+/** Turn any image Blob into a record ready for db.addImage(). */
+export async function blobToImageRecord(blob, folderId, { name = '', type } = {}) {
+  const bitmap = await decodeImage(blob);
   const w = bitmap.width, h = bitmap.height;
   const scale = Math.min(1, THUMB_MAX / Math.max(w, h));
   const tw = Math.max(1, Math.round(w * scale));
@@ -37,20 +37,18 @@ export async function fileToImageRecord(file, folderId) {
   if (bitmap.close) bitmap.close();
 
   // Keep the original bytes for full-resolution portfolio export.
-  return {
-    folderId,
-    blob: file,
-    thumb,
-    w, h,
-    name: file.name.replace(/\.[^.]+$/, ''),
-    type: file.type || 'image/jpeg',
-  };
+  return { folderId, blob, thumb, w, h, name, type: type || blob.type || 'image/jpeg' };
+}
+
+/** Turn a user File into an image record ready for db.addImage(). */
+export function fileToImageRecord(file, folderId) {
+  return blobToImageRecord(file, folderId, { name: file.name.replace(/\.[^.]+$/, ''), type: file.type });
 }
 
 /** Average luminance helper — used to auto-tint folder accents (optional). */
 export async function dominantTone(blob) {
   try {
-    const bmp = await decode(blob);
+    const bmp = await decodeImage(blob);
     const c = document.createElement('canvas');
     c.width = 8; c.height = 8;
     const ctx = c.getContext('2d');

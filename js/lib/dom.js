@@ -32,6 +32,22 @@ export const uid = () => Date.now().toString(36) + Math.random().toString(36).sl
 export const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 export const rand = (lo, hi) => lo + Math.random() * (hi - lo);
 
+/** Fold a label for forgiving search: case, full/half width and kana all ignored,
+ *  so「アタリ」finds "あたり" and "Ｒｅｆｓ" finds "refs". */
+export function foldSearch(s) {
+  return String(s ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+/** True when every whitespace-separated term of `query` appears in `text`. */
+export function matchesSearch(text, query) {
+  const terms = foldSearch(query).split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const hay = foldSearch(text);
+  return terms.every((t) => hay.includes(t));
+}
+
 /** Detect coarse (touch) pointers so views can swap drag/hover affordances. */
 export const isTouch = matchMedia('(pointer: coarse)').matches;
 

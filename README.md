@@ -14,10 +14,22 @@ HTML / CSS / ES modules, no framework, no toolchain.
    dots, glows behind a quiet title. Press **Enter** (the pill or <kbd>↵</kbd>) to step inside.
 2. **Folders** — a slowly drifting, looping field of onyx folders. Each shows a few
    of its photos peeking from the pocket. Scroll / drag to roam, click to open,
-   right‑click (or long‑press) to rename or delete, ＋ to add a new one.
+   right‑click (or long‑press) to rename or delete, ＋ to add a new one. Once the
+   field grows, the magnifier filters it by name — case, full/half width and kana
+   are all ignored, so *あたり* finds *アタリ* and *ｒｅｆｓ* finds *Refs*.
 3. **Album** — a 3‑D gallery wall. Tag your images, then tap a tag on the right and
    the matching shots float forward while the rest recede. Drop images in or tap
    **Add**; open any image to rename, tag, or delete it.
+   Open one large and the **pen** draws straight onto it — lay your construction
+   lines over a photo, then file a *flattened copy* into any other folder (creating
+   it on the spot if it doesn't exist yet). The copy is a fresh render; the source
+   photo keeps its own folder and its own untouched bytes, and its ink is lifted
+   afterwards unless you ask to keep it.
+   While the pen is out, **◐** fades the photo to 25 % over a pale ground so the ink
+   reads like lines on tracing paper — a viewing aid only, the saved copy always
+   flattens the photo at full strength. Two fingers pinch to zoom and pan at any
+   time, markup mode included; one finger (or a pencil) keeps drawing, and strokes
+   land in the same place whatever the zoom.
 4. **Portfolio** — an editable lookbook that **turns like a real book**
    (two‑page spread on tablet/desktop, single page on phones). Pick a layout per
    page, drop in images, and type directly onto the page. Pages, layouts and tone
@@ -59,7 +71,8 @@ css/                  base design system + one stylesheet per view
 js/
   main.js             hash router with cross‑fading views
   views/              landing · folders · album · portfolio
-  lib/                pointillism · image ingest · icons · chrome · settings · dom helpers
+  lib/                pointillism · image ingest · pen markup + flatten · folder
+                      picker · icons · chrome · settings · dom helpers
   storage/            db.js (IndexedDB) · sync.js (Firebase Storage)
 assets/               fonts · icons · favicon
 ```

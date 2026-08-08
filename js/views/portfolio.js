@@ -9,6 +9,7 @@ import {
 import { fileToImageRecord } from '../lib/image.js';
 import { imageFileFromPasteEvent, readClipboardImageFile } from '../lib/clipboard.js';
 import { isPrivate } from '../lib/private.js';
+import { drawStroke, paintStrokes } from '../lib/markup.js';
 
 const LAYOUTS = [
   { id: 'cover', name: 'Cover' }, { id: 'full', name: 'Full' }, { id: 'spread', name: 'Spread' },
@@ -476,25 +477,9 @@ async function openEditor(root, id, ctx) {
     const W = Math.max(1, Math.round(pw * dpr)), H = Math.max(1, Math.round(ph * dpr));
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
   }
-  function drawStroke(ctx, st, W, H) {
-    const pts = st.points || []; if (!pts.length) return;
-    ctx.save();
-    ctx.globalCompositeOperation = st.tool === 'eraser' ? 'destination-out' : 'source-over';
-    ctx.globalAlpha = st.tool === 'marker' ? 0.38 : 1;
-    ctx.strokeStyle = st.color || '#ff3b30';
-    ctx.lineWidth = Math.max(1, (st.width || 0.012) * W);
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath();
-    pts.forEach((p, i) => { const x = p[0] * W, y = p[1] * H; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-    if (pts.length === 1) ctx.lineTo(pts[0][0] * W + 0.1, pts[0][1] * H);   // a tap → a dot
-    ctx.stroke();
-    ctx.restore();
-  }
   function renderMarkup(cv, page) {
     ensureCanvasSized(cv);
-    const ctx = cv.getContext('2d');
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    (page.markup || []).forEach((st) => drawStroke(ctx, st, cv.width, cv.height));
+    paintStrokes(cv.getContext('2d'), page.markup, cv.width, cv.height);
   }
   function repaintPage(page) { const cv = markupCanvases.get(page); if (cv) renderMarkup(cv, page); }
 
