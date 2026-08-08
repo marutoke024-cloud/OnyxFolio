@@ -14,7 +14,8 @@ HTML / CSS / ES modules, no framework, no toolchain.
    dots, glows behind a quiet title. Press **Enter** (the pill or <kbd>↵</kbd>) to step inside.
 2. **Folders** — a slowly drifting, looping field of onyx folders. Each shows a few
    of its photos peeking from the pocket. Scroll / drag to roam, click to open,
-   right‑click (or long‑press) to rename or delete, ＋ to add a new one. Once the
+   right‑click (or long‑press) to rename or delete, ＋ to add a new one — with the
+   same *private* switch on the way in, so a folder can be born hidden. Once the
    field grows, the magnifier filters it by name — case, full/half width and kana
    are all ignored, so *あたり* finds *アタリ* and *ｒｅｆｓ* finds *Refs*.
 3. **Album** — a 3‑D gallery wall. Tag your images, then tap a tag on the right and
@@ -29,12 +30,16 @@ HTML / CSS / ES modules, no framework, no toolchain.
    reads like lines on tracing paper. Two fingers pinch to zoom and pan at any
    time, markup mode included; one finger (or a pencil) keeps drawing, and strokes
    land in the same place whatever the zoom.
-   Three more aids sit under the close button: **mirror** (flip the picture to catch
-   a drawing that has drifted out of true), **desaturate** (judge value without
-   colour), and **guides** (cycle through none · centre cross · thirds). All of them —
-   the fade included — change only what you see: strokes are stored against the
-   true, unmirrored picture, and a saved copy always flattens the original bytes at
-   full strength.
+   A column of view aids runs down the right edge: **original** (lift the ink for a
+   moment to see the photo as it was), **mirror** (flip the picture to catch a drawing
+   that has drifted out of true), **desaturate** (judge value without colour), and
+   **guides** (cycle through none · centre cross · thirds). All of them — the fade
+   included — change only what you see: strokes are stored against the true,
+   unmirrored picture, and a saved copy always flattens the original bytes at full
+   strength.
+   While the pen is out a tap on the margin no longer leaves the picture, so a
+   resting hand can't drop you back to the folder mid-sketch; <kbd>Esc</kbd> steps
+   out one layer at a time, pen first.
 4. **Portfolio** — an editable lookbook that **turns like a real book**
    (two‑page spread on tablet/desktop, single page on phones). Pick a layout per
    page, drop in images, and type directly onto the page. Pages, layouts and tone

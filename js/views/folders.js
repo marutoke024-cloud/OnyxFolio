@@ -1,5 +1,5 @@
 // Folders view — a packed, slowly looping grid of designed folder icons.
-import { h, isTouch, toast, matchesSearch, promptModal, confirmModal, openModal, closeModal } from '../lib/dom.js';
+import { h, isTouch, toast, matchesSearch, confirmModal, openModal, closeModal } from '../lib/dom.js';
 import { ico } from '../lib/icons.js';
 import { buildTopbar } from '../lib/chrome.js';
 import { getFolders, addFolder, updateFolder, deleteFolder, getAllImages } from '../storage/db.js';
@@ -212,59 +212,74 @@ export async function mount(root, params, ctx) {
     longTimer = setTimeout(() => {
       if (!moved) {
         const fEl = e.target.closest('.folder');
-        if (fEl) { endDrag(); openFolderEdit(fEl.dataset.id); }
+        if (fEl) { endDrag(); openFolderDialog(fEl.dataset.id); }
       }
     }, 480);
   });
   stage.addEventListener('wheel', (e) => { e.preventDefault(); momentum = 0; y -= e.deltaY * 0.6; applyTransform(); }, { passive: false });
   stage.addEventListener('contextmenu', (e) => {
     const fEl = e.target.closest('.folder');
-    if (fEl) { e.preventDefault(); openFolderEdit(fEl.dataset.id); }
+    if (fEl) { e.preventDefault(); openFolderDialog(fEl.dataset.id); }
   });
 
-  // --- folder edit (long-press / right-click) → rename, with delete ---
-  function openFolderEdit(id) {
-    const f = folders.find((x) => x.id === id);
-    if (!f) return;
-    let priv = !!f.private;
-    const input = h('input.field.jp', { value: f.name || '', placeholder: 'Untitled', spellcheck: false });
+  // --- one dialog for both making a folder and editing one (＋ New, or
+  //     long-press / right-click on a card). Creating offers the same private
+  //     switch as editing, so a folder can be born hidden rather than made and
+  //     then hidden in a second pass. ---
+  function openFolderDialog(id = null) {
+    const f = id ? folders.find((x) => x.id === id) : null;
+    if (id && !f) return;
+    const creating = !f;
+    // a folder made while browsing the private shelf belongs on that shelf
+    let priv = creating ? isPrivate() : !!f.private;
+    const input = h('input.field.jp', { value: f ? (f.name || '') : '', placeholder: 'Untitled', spellcheck: false });
     const privToggle = h('button.toggle' + (priv ? '.on' : ''), { type: 'button', title: 'Private folder', onclick: () => { priv = !priv; privToggle.classList.toggle('on', priv); } }, [h('span.knob')]);
-    const save = () => { closeModal(); updateFolder(id, { name: input.value.trim() || 'Untitled', private: priv }).then(render); };
+
+    const save = async () => {
+      closeModal();
+      const name = input.value.trim() || 'Untitled';
+      if (creating) {
+        const d = FOLDER_DESIGNS[(await getFolders()).length % FOLDER_DESIGNS.length];
+        const nf = await addFolder(name, d.file);
+        if (priv) await updateFolder(nf.id, { private: true });
+        // a brand new folder that doesn't match the live query would land on an
+        // empty-looking screen, so clear the filter before showing the field again
+        searchInput.value = ''; query = '';
+        toast(priv && !isPrivate()
+          ? 'Private folder created — turn private mode on to see it.'
+          : 'Folder created.');
+      } else {
+        await updateFolder(id, { name, private: priv });
+      }
+      await render();
+    };
     const del = async () => {
       closeModal();
       const ok = await confirmModal({ title: 'Delete folder?', message: `“${f.name || 'This folder'}” and its images will be removed from this device.`, confirmText: 'Delete', danger: true });
       if (ok) { await deleteFolder(id); toast('Folder deleted.'); await render(); }
     };
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
-    const modal = h('div.modal', {}, [
-      h('h2.display', { text: 'Folder' }),
+
+    const closeBtns = h('div', { style: { display: 'flex', gap: '10px' } }, [
+      h('button.btn.btn-ghost', { text: 'Cancel', onclick: () => closeModal() }),
+      h('button.btn.btn-accent', { text: creating ? 'Create' : 'Save', onclick: save }),
+    ]);
+    openModal(h('div.modal', {}, [
+      h('h2.display', { text: creating ? 'New folder' : 'Folder' }),
       h('div.row', {}, [h('label', { text: 'Name' }), input]),
       h('div.row.toggle-row', {}, [h('label', { text: 'Private — hidden unless private mode is on' }), privToggle]),
-      h('div.modal-actions', { style: { justifyContent: 'space-between' } }, [
-        h('button.btn.btn-danger.btn-with-ico', { onclick: del }, [ico('trash'), h('span', { text: 'Delete' })]),
-        h('div', { style: { display: 'flex', gap: '10px' } }, [
-          h('button.btn.btn-ghost', { text: 'Cancel', onclick: () => closeModal() }),
-          h('button.btn.btn-accent', { text: 'Save', onclick: save }),
-        ]),
+      h('div.modal-actions', { style: { justifyContent: creating ? 'flex-end' : 'space-between' } }, [
+        creating ? null : h('button.btn.btn-danger.btn-with-ico', { onclick: del }, [ico('trash'), h('span', { text: 'Delete' })]),
+        closeBtns,
       ]),
-    ]);
-    openModal(modal);
+    ]));
     setTimeout(() => { input.focus(); input.select(); }, 120);
   }
 
   // --- actions ---
-  async function onNew() {
-    const name = await promptModal({ title: 'New folder', label: 'Name', placeholder: 'Untitled', jp: true, confirmText: 'Create' });
-    if (name === null) return;
-    const used = (await getFolders()).length;
-    const d = FOLDER_DESIGNS[used % FOLDER_DESIGNS.length];
-    await addFolder(name || 'Untitled', d.file);
-    toast('Folder created.');
-    // drop any active filter — a brand new folder that doesn't match the query
-    // would otherwise be created into an empty-looking screen
-    searchInput.value = ''; query = '';
-    await render();
-  }
+  // a declaration, not a const: buildTopbar() above wires this up long before
+  // execution reaches here
+  function onNew() { openFolderDialog(); }
   // lay out whatever `lastData` currently holds (also the resize path)
   function rebuild() {
     const q = query.trim();
