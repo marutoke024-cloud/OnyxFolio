@@ -289,6 +289,8 @@ input.field::placeholder, textarea.field::placeholder { color: var(--ink-3); }
 .field-mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.6; resize: vertical; }
 .note { font-size: 11.5px; color: var(--ink-2); line-height: 1.6; margin-top: 10px; }
 .note em { color: var(--ink-1); font-style: normal; }
+.note-warn { color: var(--danger); border-left: 2px solid var(--danger); padding-left: 10px; }
+.note-warn em { color: var(--danger); }
 .btn-line { display: flex; gap: 10px; margin-top: 14px; }
 .sync-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
 @media (max-width: 480px) { .sync-grid { grid-template-columns: 1fr; } }

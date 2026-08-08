@@ -94,3 +94,9 @@ if ('serviceWorker' in navigator && location.hostname.endsWith('github.io')) {
 }
 
 applyPrivate();   // restore the ♥ badge / private-mode body class on load
+
+// Every photo lives in IndexedDB, which browsers are free to evict under storage
+// pressure. Ask once per load to be exempted — it is granted silently where the
+// browser supports it, and costs nothing where it doesn't. (iOS ignores this; the
+// only cure there is installing to the Home Screen, which Settings explains.)
+import('./storage/backup.js').then((m) => m.requestPersistence()).catch(() => {});

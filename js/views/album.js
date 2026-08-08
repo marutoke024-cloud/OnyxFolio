@@ -389,14 +389,30 @@ export async function mount(root, params, ctx) {
   const lbPlate = h('div.lb-plate');
   // wrapper carries the zoom transform so plate, image and ink scale together
   const lbWrap = h('div.lb-imgwrap', {}, [lbPlate, lbImg, lbInk]);
+  // Guides live OUTSIDE that transform, in screen space. Inside it they would be
+  // scaled with the picture, and a stroke thin enough to stay a hairline at 6×
+  // is sub-pixel on the canvas — which fades it out rather than sharpening it.
+  const lbGrid = h('canvas.lb-grid');
   const lbClose = h('button.icon-btn.lb-close', { onclick: closeLightbox }, [ico('close')]);
   const lbStage = h('div.lb-stage', {}, [
     lbWrap,
+    lbGrid,
     h('button.icon-btn.lb-nav.prev', { onclick: () => step(-1) }, [ico('back')]),
     h('button.icon-btn.lb-nav.next', { onclick: () => step(1), style: { transform: 'translateY(-50%) scaleX(-1)' } }, [ico('back')]),
   ]);
   lbStage.addEventListener('click', (e) => { if (e.target === lbStage || e.target === lbWrap) closeLightbox(); });
   const inkBtn = h('button.icon-btn.lb-penbtn', { title: 'Pen — draw on this image', onclick: () => toggleInk() }, [ico('pen')]);
+
+  // --- view aids: mirror · desaturate · proportion grid ---
+  // Three ways of LOOKING at the picture, so none of them touch what is stored:
+  // strokes are kept against the true (unmirrored) image, and the flattened copy
+  // always renders from the original bytes.
+  const GRIDS = ['off', 'cross', 'thirds'];
+  let flipped = false, grayOn = false, gridIx = 0;
+  const flipBtn = h('button.icon-btn', { title: '左右反転 — 形の狂いを見つける', onclick: () => { flipped = !flipped; applyView(); } }, [ico('flip')]);
+  const grayBtn = h('button.icon-btn', { title: 'グレースケール — 明暗だけを見る', onclick: () => { grayOn = !grayOn; applyView(); } }, [ico('droplet')]);
+  const gridBtn = h('button.icon-btn', { title: 'ガイド線 — なし / 十字線 / 三分割', onclick: () => { gridIx = (gridIx + 1) % GRIDS.length; applyView(); } }, [ico('grid')]);
+
   const lightbox = h('div.lightbox', {}, [
     lbStage,
     h('div.lb-tools', {}, [
@@ -404,6 +420,8 @@ export async function mount(root, params, ctx) {
       inkBtn,
       h('button.icon-btn', { title: 'Delete', onclick: deleteCurrent }, [ico('trash')]),
     ]),
+    // top-right, clear of the pen toolbar on the left at every screen size
+    h('div.lb-view', {}, [flipBtn, grayBtn, gridBtn]),
     lbClose,
   ]);
   document.body.append(lightbox);
@@ -483,6 +501,47 @@ export async function mount(root, params, ctx) {
     if (lbInk.width !== W || lbInk.height !== H) { lbInk.width = W; lbInk.height = H; }
     paintStrokes(lbInk.getContext('2d'), im.markup, W, H);
   }
+  // Hairlines over the picture for checking proportion. The canvas covers the
+  // stage at screen resolution, and the fractions are laid out along the image's
+  // CURRENT on-screen rect — which already carries the zoom, the pan and the
+  // mirror — so a guide is exactly one device pixel however far you are zoomed in.
+  function renderGrid() {
+    const sr = lbStage.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.round(sr.width * dpr), H = Math.round(sr.height * dpr);
+    if (!W || !H) return;
+    if (lbGrid.width !== W || lbGrid.height !== H) { lbGrid.width = W; lbGrid.height = H; }
+    const ctx = lbGrid.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    if (!gridIx) return;
+    const ir = lbImg.getBoundingClientRect();
+    if (!ir.width || !ir.height) return;
+    const x0 = (ir.left - sr.left) * dpr, y0 = (ir.top - sr.top) * dpr;
+    const w = ir.width * dpr, hh = ir.height * dpr;
+    ctx.lineWidth = dpr;
+    ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+    ctx.shadowColor = 'rgba(0,0,0,0.65)';   // a halo keeps guides readable over pale photos
+    ctx.shadowBlur = 2 * dpr;
+    // half-pixel offset so an odd-width stroke lands on the pixel, not across two
+    const snap = (v) => Math.round(v - dpr / 2) + dpr / 2;
+    const fr = GRIDS[gridIx] === 'cross' ? [0.5] : [1 / 3, 2 / 3];
+    ctx.beginPath();
+    fr.forEach((f) => {
+      const x = snap(x0 + f * w), y = snap(y0 + f * hh);
+      ctx.moveTo(x, y0); ctx.lineTo(x, y0 + hh);
+      ctx.moveTo(x0, y); ctx.lineTo(x0 + w, y);
+    });
+    ctx.stroke();
+  }
+  function applyView() {
+    flipBtn.classList.toggle('on', flipped);
+    grayBtn.classList.toggle('on', grayOn);
+    gridBtn.classList.toggle('on', gridIx > 0);
+    lbImg.classList.toggle('gray', grayOn);
+    applyZoom();   // the mirror rides along in the wrapper transform, and repaints the grid
+  }
+  function resetView() { flipped = false; grayOn = false; gridIx = 0; applyView(); }
+
   // fade the photo toward the pale plate so the ink stands out while tracing
   function applyDim() {
     lbImg.classList.toggle('dim', dimOn);
@@ -518,6 +577,7 @@ export async function mount(root, params, ctx) {
     inkBtn.classList.toggle('on', inkOn);
     lbMk.classList.toggle('show', inkOn);
     lbInk.classList.toggle('drawing', inkOn);
+    lightbox.classList.toggle('inking', inkOn);   // lets CSS move the tools clear of the toolbar
     // the zoom is deliberately left as it is — pinching is part of drawing now,
     // so a picture framed before reaching for the pen stays framed
     if (inkOn) { inkUndoA.length = 0; inkRedoA.length = 0; inkUI(); renderInk(); }
@@ -545,8 +605,14 @@ export async function mount(root, params, ctx) {
   function inkAbort() { inkStroke = null; inkPaint(); }
   function inkPoint(e) {
     const r = lbInk.getBoundingClientRect();
+    // getBoundingClientRect is axis-aligned, so a mirrored canvas reports its
+    // VISUAL left edge as 0. Strokes belong to the real photo, so undo the mirror
+    // before storing — the line then sits where it was drawn in the flipped view,
+    // and on the matching spot of the picture everywhere else.
+    let nx = (e.clientX - r.left) / r.width;
+    if (flipped) nx = 1 - nx;
     inkStroke.points.push([
-      Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      Math.min(1, Math.max(0, nx)),
       Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
     ]);
   }
@@ -638,7 +704,12 @@ export async function mount(root, params, ctx) {
 
   // --- zoom & pan (wheel · pinch · drag) — on the wrapper so ink follows the zoom ---
   let zScale = 1, zx = 0, zy = 0;
-  const applyZoom = () => { lbWrap.style.transform = `translate(${zx.toFixed(1)}px, ${zy.toFixed(1)}px) scale(${zScale.toFixed(3)})`; lbImg.style.cursor = zScale > 1 ? 'grab' : 'auto'; };
+  const applyZoom = () => {
+    const mirror = flipped ? ' scaleX(-1)' : '';
+    lbWrap.style.transform = `translate(${zx.toFixed(1)}px, ${zy.toFixed(1)}px) scale(${zScale.toFixed(3)})${mirror}`;
+    lbImg.style.cursor = zScale > 1 ? 'grab' : 'auto';
+    renderGrid();   // guide weight is derived from the zoom
+  };
   const resetZoom = () => { zScale = 1; zx = 0; zy = 0; applyZoom(); };
   function clampPan() {
     const sr = lbStage.getBoundingClientRect();
@@ -746,12 +817,12 @@ export async function mount(root, params, ctx) {
     // PREVIOUS image during the gap — the brief flash the user saw on iOS.
     lbImg.classList.remove('ready');
     lbImk_reset();
-    lbImg.onload = () => { if (token === showToken) { lbImg.classList.add('ready'); requestAnimationFrame(renderInk); } };
+    lbImg.onload = () => { if (token === showToken) { lbImg.classList.add('ready'); requestAnimationFrame(paintOverlays); } };
     lbImg.onerror = () => { if (token === showToken && im.thumb) lbImg.src = blobURL('thumb-' + im.id, im.thumb); };
     const url = await viewURLFor(im);
     if (token !== showToken) return;   // a newer step()/open() superseded this one
     const next = url || (im.thumb ? blobURL('thumb-' + im.id, im.thumb) : '');
-    if (lbImg.src === next && next) { lbImg.classList.add('ready'); requestAnimationFrame(renderInk); }   // same src won't refire onload
+    if (lbImg.src === next && next) { lbImg.classList.add('ready'); requestAnimationFrame(paintOverlays); }   // same src won't refire onload
     else lbImg.src = next;
   }
   // stepping to another image: clear the old ink layer and its undo history
@@ -761,8 +832,22 @@ export async function mount(root, params, ctx) {
     inkStroke = null; inkUndoA.length = 0; inkRedoA.length = 0;
     if (inkOn) inkUI();
   }
+  // the ink is pinned to the <img> box and the guides to the stage, so both need
+  // repainting whenever either changes size — a rotation, or a window resize
+  function paintOverlays() { renderInk(); renderGrid(); }
+  let lbRT;
+  const onLbResize = () => {
+    if (!lightbox.classList.contains('in')) return;
+    clearTimeout(lbRT); lbRT = setTimeout(paintOverlays, 150);
+  };
+  window.addEventListener('resize', onLbResize);
   function openLightbox(i) { lbIndex = i; showCurrent(); lightbox.classList.add('in'); document.addEventListener('keydown', lbKeys); }
-  function closeLightbox() { if (inkOn) toggleInk(); lightbox.classList.remove('in'); document.removeEventListener('keydown', lbKeys); }
+  function closeLightbox() {
+    if (inkOn) toggleInk();
+    resetView();   // a fresh open should never surprise you with a mirrored photo
+    lightbox.classList.remove('in');
+    document.removeEventListener('keydown', lbKeys);
+  }
   // when a theme is active, prev/next walk the FILTERED set (the images actually
   // on screen) rather than the whole folder order
   const matchesTag = (im) => !activeTag || (activeTag === UNTAGGED ? !(im.tags || []).length : (im.tags || []).includes(activeTag));
@@ -922,6 +1007,8 @@ export async function mount(root, params, ctx) {
       document.removeEventListener('visibilitychange', onVis);
       document.removeEventListener('paste', onPaste);
       document.removeEventListener('keydown', lbKeys);
+      window.removeEventListener('resize', onLbResize);
+      clearTimeout(lbRT);
       ro.disconnect();
       ownedViewURLs.forEach((u) => URL.revokeObjectURL(u));
       ownedViewURLs.clear(); viewCache.clear();

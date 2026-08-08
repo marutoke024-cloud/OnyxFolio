@@ -41,6 +41,8 @@ export const icons = {
   dots:    w('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
   search:  w('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.6-4.6"/>'),
   contrast:w('<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/>'),
+  flip:    w('<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M9.2 7.2 4.2 12l5 4.8z"/><path d="M14.8 7.2 19.8 12l-5 4.8z"/>'),
+  droplet: w('<path d="M12 3.4c3.5 3.7 5.6 6.5 5.6 9.1a5.6 5.6 0 0 1-11.2 0c0-2.6 2.1-5.4 5.6-9.1z"/><path d="M12 8.5v9.6" stroke-dasharray="1.5 2"/>'),
   folderIn:w('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 9.5v5.5M9.5 12.5 12 15l2.5-2.5"/>'),
   lockOpen:w('<rect x="4.5" y="11" width="15" height="9.5" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 7.7-1.4"/>'),
 };

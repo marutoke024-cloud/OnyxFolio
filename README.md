@@ -26,10 +26,15 @@ HTML / CSS / ES modules, no framework, no toolchain.
    photo keeps its own folder and its own untouched bytes, and its ink is lifted
    afterwards unless you ask to keep it.
    While the pen is out, **◐** fades the photo to 25 % over a pale ground so the ink
-   reads like lines on tracing paper — a viewing aid only, the saved copy always
-   flattens the photo at full strength. Two fingers pinch to zoom and pan at any
+   reads like lines on tracing paper. Two fingers pinch to zoom and pan at any
    time, markup mode included; one finger (or a pencil) keeps drawing, and strokes
    land in the same place whatever the zoom.
+   Three more aids sit under the close button: **mirror** (flip the picture to catch
+   a drawing that has drifted out of true), **desaturate** (judge value without
+   colour), and **guides** (cycle through none · centre cross · thirds). All of them —
+   the fade included — change only what you see: strokes are stored against the
+   true, unmirrored picture, and a saved copy always flattens the original bytes at
+   full strength.
 4. **Portfolio** — an editable lookbook that **turns like a real book**
    (two‑page spread on tablet/desktop, single page on phones). Pick a layout per
    page, drop in images, and type directly onto the page. Pages, layouts and tone
@@ -38,7 +43,26 @@ HTML / CSS / ES modules, no framework, no toolchain.
 ## Storage & sync
 
 Everything lives locally in **IndexedDB**, so the app is fully usable offline.
-Sync is **manual** via your own Firebase Storage:
+
+### Keeping it
+
+Browsers are allowed to throw local storage away. On first load the app asks to be
+exempted (`navigator.storage.persist()`), and **Sync & Settings** shows how much
+room the library uses and whether that request was granted.
+
+> **iPhone / iPad:** Safari erases a site's stored data after about **7 days without
+> a visit**, and `persist()` cannot override it. Add Onyx Folio to your Home Screen
+> (Share → *Add to Home Screen*) to be exempt.
+
+**Save backup file** writes the whole library — every original, every thumbnail,
+folders, tags, ink and lookbooks — into a single `.zip` you keep yourself.
+**Restore from file** reads one back. It needs no account and no network, and it is
+the only copy that survives this browser losing its data. The archive is an ordinary
+zip: you can open it in any file manager and pull individual photos straight out.
+
+### Sync
+
+Sync between devices is **manual**, via your own Firebase Storage:
 
 1. Open **Sync & Settings** (the gear, top‑right of any inner view).
 2. Paste your Firebase **web config** (Project Settings → Your apps → Web →
@@ -74,6 +98,7 @@ js/
   lib/                pointillism · image ingest · pen markup + flatten · folder
                       picker · icons · chrome · settings · dom helpers
   storage/            db.js (IndexedDB) · sync.js (Firebase Storage)
+                      backup.js (zip export/import · persistence · usage)
 assets/               fonts · icons · favicon
 ```
 
