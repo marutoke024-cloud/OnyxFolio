@@ -5,6 +5,10 @@ import {
   getConfig, setConfig, clearConfig, parseConfig, isConfigured, pushAll, pullAll,
 } from '../storage/sync.js';
 import { isPrivate, setPrivate } from './private.js';
+import {
+  exportLibrary, importLibrary, saveBlob, backupFilename,
+  storageUsage, requestPersistence, iosEvictionRisk, formatBytes,
+} from '../storage/backup.js';
 
 export function openSettings() {
   const privToggle = h('button.toggle' + (isPrivate() ? '.on' : ''), {
@@ -109,9 +113,94 @@ export function openSettings() {
     }
   };
 
+  // --- On this device: how much room the library uses, whether the browser has
+  //     promised to keep it, and a backup that needs no cloud account at all ---
+  const useLabel = h('div.note', { text: 'Measuring…' });
+  const useBar = h('div.sync-bar', {}, [h('div.sync-bar-fill')]);
+  const useFill = useBar.querySelector('.sync-bar-fill');
+  const persistNote = h('div.note');
+  const evictNote = h('div.note.note-warn');
+  async function renderStorage() {
+    const est = await storageUsage();
+    if (est && est.quota) {
+      const p = Math.min(100, Math.round(est.usage / est.quota * 100));
+      useFill.style.width = p + '%';
+      useLabel.textContent = `${formatBytes(est.usage)} used of about ${formatBytes(est.quota)} available (${p}%).`;
+    } else {
+      useBar.style.display = 'none';
+      useLabel.textContent = est ? `${formatBytes(est.usage)} used.` : 'This browser does not report storage usage.';
+    }
+    const { supported, persisted } = await requestPersistence();
+    persistNote.innerHTML = !supported
+      ? 'This browser cannot mark storage as persistent — keep a <em>backup file</em>.'
+      : persisted
+        ? 'Storage is <em>persistent</em> — the browser will not evict this library on its own.'
+        : 'Storage is <em>not</em> persistent yet — the browser may evict it under pressure. Keep a <em>backup file</em>.';
+    if (iosEvictionRisk()) {
+      evictNote.innerHTML = 'On iPhone / iPad, Safari erases a site’s stored data after about <em>7 days without a visit</em>. Add Onyx Folio to your Home Screen (Share → Add to Home Screen) to be exempt — and keep a backup file either way.';
+    } else evictNote.remove();
+  }
+
+  const expBtn = h('button.btn.btn-with-ico', {}, [ico('download'), h('span', { text: 'Save backup file' })]);
+  expBtn.onclick = async () => {
+    const bar = h('div.sync-bar', {}, [h('div.sync-bar-fill')]);
+    const fill = bar.querySelector('.sync-bar-fill');
+    const label = h('div.note', { text: 'Starting…' });
+    openModal(workingModal('Packing your library…', bar, label));
+    try {
+      const { blob, counts } = await exportLibrary(({ phase, done, total }) => {
+        fill.style.width = (total ? Math.round(done / total * 100) : 4) + '%';
+        label.textContent = total ? `Packing…  ${done} / ${total}` : 'Reading library…';
+      });
+      saveBlob(blob, backupFilename());
+      closeModal();
+      toast(`Backup saved — ${counts.images} images, ${formatBytes(blob.size)}.`);
+    } catch (e) {
+      closeModal();
+      toast(e.message || 'Backup failed.', { error: true });
+    }
+  };
+
+  const impInput = h('input', { type: 'file', accept: '.zip,application/zip', style: { display: 'none' } });
+  const impBtn = h('button.btn.btn-with-ico', { onclick: () => impInput.click() }, [ico('upload'), h('span', { text: 'Restore from file' })]);
+  impInput.addEventListener('change', async () => {
+    const file = impInput.files[0]; impInput.value = '';
+    if (!file) return;
+    const ok = await confirmModal({
+      title: 'Replace local library?',
+      message: `Restoring “${file.name}” will overwrite everything currently stored on this device.`,
+      confirmText: 'Restore & replace', danger: true,
+    });
+    if (!ok) return;
+    const bar = h('div.sync-bar', {}, [h('div.sync-bar-fill')]);
+    const fill = bar.querySelector('.sync-bar-fill');
+    const label = h('div.note', { text: 'Reading…' });
+    openModal(workingModal('Restoring from file…', bar, label));
+    try {
+      const r = await importLibrary(file, ({ phase, done, total }) => {
+        fill.style.width = (total ? Math.round(done / total * 100) : 6) + '%';
+        label.textContent = total ? `Restoring…  ${done} / ${total}` : 'Reading archive…';
+      });
+      fill.style.width = '100%';
+      toast(`Restored ${r.images} images.`);
+      setTimeout(() => location.reload(), 600);
+    } catch (e) {
+      closeModal();
+      toast(e.message || 'Restore failed.', { error: true });
+    }
+  });
+
   const modal = h('div.modal', {}, [
     h('h2.display', { text: 'Sync & Settings' }),
-    h('p.modal-sub', { text: 'Connect your Firebase Storage to back up or move your library between devices.' }),
+    h('p.modal-sub', { text: 'Keep a backup file so nothing depends on this browser — and optionally connect Firebase Storage to move the library between devices.' }),
+
+    h('div.modal-section', {}, [
+      h('span.mono-label', { text: 'On this device' }),
+      useBar, useLabel, persistNote, evictNote,
+      h('div.sync-grid', {}, [ expBtn, impBtn ]),
+      h('div.note', { text: 'The backup is one .zip holding every image and all your folders — it needs no account, and it is the only copy that survives this browser losing its data.' }),
+      impInput,
+    ]),
 
     h('div.modal-section', {}, [
       h('div.section-head', {}, [ h('span.mono-label', { text: 'Firebase Storage' }), status ]),
@@ -137,6 +226,7 @@ export function openSettings() {
   ]);
 
   openModal(modal);
+  renderStorage();
 }
 
 function workingModal(title, ...nodes) {
