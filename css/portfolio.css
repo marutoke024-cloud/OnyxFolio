@@ -343,9 +343,11 @@
 .mk-menu.mk-eraser .mk-colors { opacity: .35; }
 .mk-width { width: 34px; height: 22px; border: none; background: transparent; cursor: pointer; display: grid; place-items: center; }
 .mk-wdot { background: #cfcfd4; border-radius: 50%; transition: background .15s; }
-.mk-width:nth-child(1) .mk-wdot { width: 6px; height: 6px; }
-.mk-width:nth-child(2) .mk-wdot { width: 10px; height: 10px; }
-.mk-width:nth-child(3) .mk-wdot { width: 15px; height: 15px; }
+/* four steps now — the finest is for tight construction lines */
+.mk-width:nth-child(1) .mk-wdot { width: 4px; height: 4px; }
+.mk-width:nth-child(2) .mk-wdot { width: 7px; height: 7px; }
+.mk-width:nth-child(3) .mk-wdot { width: 11px; height: 11px; }
+.mk-width:nth-child(4) .mk-wdot { width: 15px; height: 15px; }
 .mk-width.active .mk-wdot { background: var(--accent); }
 .mk-done {
   display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer;

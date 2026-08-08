@@ -7,7 +7,7 @@ import { buildTopbar } from '../lib/chrome.js';
 import { getFolder, getFolders, getImages, getAllImages, addImage, updateImage, deleteImage, blobURL, revokeURL } from '../storage/db.js';
 import { fileToImageRecord, blobToImageRecord } from '../lib/image.js';
 import { imageFileFromPasteEvent, readClipboardImageFile } from '../lib/clipboard.js';
-import { paintStrokes, drawStroke, flattenMarkup } from '../lib/markup.js';
+import { paintStrokes, drawStroke, flattenMarkup, DIM_PLATE } from '../lib/markup.js';
 import { folderPicker } from '../lib/folderPicker.js';
 import { isPrivate } from '../lib/private.js';
 
@@ -434,14 +434,16 @@ export async function mount(root, params, ctx) {
 
   // --- lightbox ink: same tools as the lookbook markup, strokes on im.markup ---
   const INK_COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de', '#1c1c1e', '#ffffff'];
-  const INK_WIDTHS = [0.006, 0.012, 0.024];
+  const INK_WIDTHS = [0.003, 0.006, 0.012, 0.024];
   const inkState = { tool: 'pen', color: '#ff3b30', width: 0.012 };
   let inkOn = false, inkStroke = null;
-  // One click drops the photo to this, so the ink reads clearly over it. It is a
-  // viewing aid only — the saved copy always flattens the photo at full strength.
+  // One click drops the photo to this so the ink reads clearly over it. The fade
+  // is kept ON THE IMAGE (im.dim), so it survives leaving the pen, comes back when
+  // the picture is reopened, and is baked into a saved copy — it counts as part of
+  // the markup. "Original" lifts it along with the ink.
   const DIM_ALPHA = 0.25;
-  lbImg.style.setProperty('--lb-dim', String(DIM_ALPHA));   // one source of truth for the fade
-  let dimOn = false;
+  lbPlate.style.background = DIM_PLATE;
+  const imDim = () => +((images[lbIndex] || {}).dim) || 0;
   const inkUndoA = [], inkRedoA = [];
   // every pointer currently down on the lightbox, wherever it landed — the ink
   // canvas and the stage both feed this so a two-finger pinch works across both
@@ -454,7 +456,7 @@ export async function mount(root, params, ctx) {
   const inkUndoBtn = h('button.mk-btn', { title: 'Undo', onclick: () => inkUndo() }, [ico('undo')]);
   const inkRedoBtn = h('button.mk-btn', { title: 'Redo', onclick: () => inkRedo() }, [ico('redo')]);
   const inkSaveBtn = h('button.mk-btn.mk-saveas', { title: '加筆した画像を別のフォルダに保存', onclick: () => openSaveCopy() }, [ico('folderIn')]);
-  const inkDimBtn = h('button.mk-btn.mk-dim', { title: `写真を薄くする（不透明度 ${Math.round(DIM_ALPHA * 100)}%）— 加筆を見やすく`, onclick: () => toggleDim() }, [ico('contrast')]);
+  const inkDimBtn = h('button.mk-btn.mk-dim', { title: `写真を薄くする（不透明度 ${Math.round(DIM_ALPHA * 100)}%）— 加筆の一部として保存されます`, onclick: () => toggleDim() }, [ico('contrast')]);
   const lbMk = h('div.mk-menu.lb-mk', {}, [
     h('div.mk-group', {}, [inkToolB('pen', 'pen', 'マジックペン'), inkToolB('marker', 'marker', '半透明マーカー'), inkToolB('eraser', 'eraser', '消しゴム')]),
     h('div.mk-sep'),
@@ -485,7 +487,7 @@ export async function mount(root, params, ctx) {
     lbMk.classList.toggle('mk-eraser', inkState.tool === 'eraser');
     inkUndoBtn.disabled = !inkUndoA.length;
     inkRedoBtn.disabled = !inkRedoA.length;
-    inkSaveBtn.disabled = !((images[lbIndex]?.markup || []).length);
+    inkSaveBtn.disabled = !((images[lbIndex]?.markup || []).length) && !imDim();
   }
   // lay an overlay exactly over the displayed picture (the <img> box, which
   // `object-fit: contain` may leave smaller than the wrapper)
@@ -544,25 +546,34 @@ export async function mount(root, params, ctx) {
     grayBtn.classList.toggle('on', grayOn);
     gridBtn.classList.toggle('on', gridIx > 0);
     // one tap to see the photo as it was — only offered when there IS ink to lift
-    const hasInk = ((images[lbIndex] || {}).markup || []).length > 0;
-    eyeBtn.disabled = !hasInk;
-    eyeBtn.classList.toggle('on', hasInk && inkHidden);
-    eyeBtn.title = inkHidden ? '加筆を表示する' : '加筆を隠してオリジナルを見る';
+    const marked = ((images[lbIndex] || {}).markup || []).length > 0 || imDim() > 0;
+    eyeBtn.disabled = !marked;
+    eyeBtn.classList.toggle('on', marked && inkHidden);
+    eyeBtn.title = inkHidden ? '加筆を表示する' : '加筆と不透明度を外してオリジナルを見る';
     eyeBtn.innerHTML = '';
     eyeBtn.append(ico(inkHidden ? 'eyeOff' : 'eye'));
     lbImg.classList.toggle('gray', grayOn);
     lbInk.classList.toggle('ink-hidden', inkHidden);
+    applyDim();
     applyZoom();   // the mirror rides along in the wrapper transform, and repaints the grid
   }
   function resetView() { flipped = false; grayOn = false; gridIx = 0; inkHidden = false; applyView(); }
 
   // fade the photo toward the pale plate so the ink stands out while tracing
   function applyDim() {
-    lbImg.classList.toggle('dim', dimOn);
-    lbPlate.classList.toggle('show', dimOn);
-    inkDimBtn.classList.toggle('on', dimOn);
+    const a = imDim();
+    const showing = a > 0 && !inkHidden;   // "original" strips the fade too
+    lbImg.style.setProperty('--lb-dim', String(a || DIM_ALPHA));
+    lbImg.classList.toggle('dim', showing);
+    lbPlate.classList.toggle('show', showing);
+    inkDimBtn.classList.toggle('on', a > 0);
   }
-  function toggleDim() { dimOn = !dimOn; applyDim(); }
+  function toggleDim() {
+    const im = images[lbIndex]; if (!im) return;
+    im.dim = im.dim ? 0 : DIM_ALPHA;
+    updateImage(im.id, { dim: im.dim });   // saved as you go, like the strokes
+    applyView();
+  }
   function inkCommit() {
     const im = images[lbIndex]; if (!im || !inkStroke || !inkStroke.points.length) { inkStroke = null; return; }
     im.markup = im.markup || [];
@@ -595,8 +606,7 @@ export async function mount(root, params, ctx) {
     // the zoom is deliberately left as it is — pinching is part of drawing now,
     // so a picture framed before reaching for the pen stays framed
     if (inkOn) { inkUndoA.length = 0; inkRedoA.length = 0; inkHidden = false; inkUI(); renderInk(); }   // can't draw blind
-    else dimOn = false;              // the fade is a drawing aid, not a view mode
-    applyDim(); applyView();
+    applyView();   // the fade stays: it belongs to the image now, not to pen mode
     // strokes were saved per-commit; toggling off just hides the tools
   }
   // While the pen is out one pointer draws and two pinch-zoom, so an iPad can
@@ -655,7 +665,7 @@ export async function mount(root, params, ctx) {
   // is lifted afterwards, leaving it exactly as it was before the pen came out.
   async function openSaveCopy() {
     const im = images[lbIndex]; if (!im) return;
-    if (!(im.markup || []).length) { toast('この画像にはまだ加筆がありません。'); return; }
+    if (!(im.markup || []).length && !imDim()) { toast('この画像にはまだ加筆がありません。'); return; }
 
     const [allFolders, allImgs] = await Promise.all([getFolders(), getAllImages()]);
     const counts = new Map();
@@ -687,8 +697,9 @@ export async function mount(root, params, ctx) {
         const rec = await blobToImageRecord(blob, dest.id, { name: nameInput.value.trim() || im.name || '' });
         await addImage({ ...rec, tags: [...(im.tags || [])] });
         if (clearOriginal) {
-          im.markup = [];
-          await updateImage(im.id, { markup: [] });
+          // the fade counts as markup, so it is lifted with the strokes
+          im.markup = []; im.dim = 0;
+          await updateImage(im.id, { markup: [], dim: 0 });
           inkUndoA.length = 0; inkRedoA.length = 0;
         }
         closeModal();
@@ -696,8 +707,9 @@ export async function mount(root, params, ctx) {
         renderInk(); inkUI(); applyView();
         toast(`「${dest.name}」に保存しました。`);
       } catch (e) {
+        // say what actually went wrong — a bare "failed" leaves nothing to act on
         console.error('save copy failed', e);
-        toast('保存できませんでした。', { error: true });
+        toast('保存できませんでした: ' + (e && e.message ? e.message : e), { error: true });
       } finally {
         busy = false; saveBtn.textContent = '保存'; saveBtn.disabled = !picker.valid();
       }
@@ -705,10 +717,10 @@ export async function mount(root, params, ctx) {
 
     openModal(h('div.modal', {}, [
       h('h2.display', { text: '加筆した画像を保存' }),
-      h('p.modal-sub', { text: '加筆を焼き込んだ複製を保存します。元の画像は今のフォルダにそのまま残ります。' }),
+      h('p.modal-sub', { text: '加筆（薄くした不透明度も含む）を焼き込んだ複製を保存します。元の画像は今のフォルダにそのまま残ります。' }),
       h('div.row', {}, [h('label', { text: 'Name' }), nameInput]),
       h('div.row', {}, [h('label', { text: '保存先フォルダ' }), picker.el]),
-      h('div.row.toggle-row', {}, [h('label', { text: '保存したら、元の画像から加筆を消す' }), clearToggle]),
+      h('div.row.toggle-row', {}, [h('label', { text: '保存したら、元の画像から加筆と不透明度を消す' }), clearToggle]),
       h('div.modal-actions', {}, [
         h('button.btn.btn-ghost', { text: 'Cancel', onclick: () => closeModal() }),
         saveBtn,

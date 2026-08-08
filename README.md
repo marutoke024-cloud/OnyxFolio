@@ -21,22 +21,23 @@ HTML / CSS / ES modules, no framework, no toolchain.
 3. **Album** — a 3‑D gallery wall. Tag your images, then tap a tag on the right and
    the matching shots float forward while the rest recede. Drop images in or tap
    **Add**; open any image to rename, tag, or delete it.
-   Open one large and the **pen** draws straight onto it — lay your construction
-   lines over a photo, then file a *flattened copy* into any other folder (creating
-   it on the spot if it doesn't exist yet). The copy is a fresh render; the source
-   photo keeps its own folder and its own untouched bytes, and its ink is lifted
-   afterwards unless you ask to keep it.
-   While the pen is out, **◐** fades the photo to 25 % over a pale ground so the ink
-   reads like lines on tracing paper. Two fingers pinch to zoom and pan at any
-   time, markup mode included; one finger (or a pencil) keeps drawing, and strokes
-   land in the same place whatever the zoom.
-   A column of view aids runs down the right edge: **original** (lift the ink for a
-   moment to see the photo as it was), **mirror** (flip the picture to catch a drawing
-   that has drifted out of true), **desaturate** (judge value without colour), and
-   **guides** (cycle through none · centre cross · thirds). All of them — the fade
-   included — change only what you see: strokes are stored against the true,
-   unmirrored picture, and a saved copy always flattens the original bytes at full
-   strength.
+   Open one large and the **pen** draws straight onto it — four nib widths, down to
+   a hairline for tight construction lines. Lay your marks over a photo, then file a
+   *flattened copy* into any other folder (creating it on the spot if it doesn't
+   exist yet). The copy is a fresh render; the source photo keeps its own folder and
+   its own untouched bytes, and its markup is lifted afterwards unless you ask to
+   keep it.
+   **◐** fades the photo to 25 % over a pale ground so the ink reads like lines on
+   tracing paper. The fade *counts as markup*: it stays with the picture, comes back
+   when you reopen it, and is baked into a saved copy. Two fingers pinch to zoom and
+   pan at any time, markup mode included; one finger (or a pencil) keeps drawing, and
+   strokes land in the same place whatever the zoom.
+   A column of view aids runs down the right edge: **original** (lift the ink *and*
+   the fade for a moment, to see the photo as it was), **mirror** (flip the picture to
+   catch a drawing that has drifted out of true), **desaturate** (judge value without
+   colour), and **guides** (cycle through none · centre cross · thirds). The last three
+   change only what you see — strokes are stored against the true, unmirrored
+   picture, and neither the mirror nor the greyscale ever reaches a saved copy.
    While the pen is out a tap on the margin no longer leaves the picture, so a
    resting hand can't drop you back to the folder mid-sketch; <kbd>Esc</kbd> steps
    out one layer at a time, pen first.
