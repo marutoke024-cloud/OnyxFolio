@@ -41,11 +41,13 @@ export async function getFolders() {
   const all = await done(s.getAll());
   return all.sort(byOrder);
 }
-export async function addFolder(name, icon = null) {
+/** `extra` lands in the record as it is created — a folder can be born private
+ *  in one write instead of being created and then patched. */
+export async function addFolder(name, icon = null, extra = null) {
   const folders = await getFolders();
   const folder = {
     id: uid(), name: name || 'Untitled', order: folders.length,
-    createdAt: Date.now(), accent: null, icon,
+    createdAt: Date.now(), accent: null, icon, ...extra,
   };
   const s = await tx('folders', 'readwrite');
   await done(s.put(folder));

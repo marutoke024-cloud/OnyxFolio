@@ -240,8 +240,7 @@ export async function mount(root, params, ctx) {
       const name = input.value.trim() || 'Untitled';
       if (creating) {
         const d = FOLDER_DESIGNS[(await getFolders()).length % FOLDER_DESIGNS.length];
-        const nf = await addFolder(name, d.file);
-        if (priv) await updateFolder(nf.id, { private: true });
+        await addFolder(name, d.file, priv ? { private: true } : null);
         // a brand new folder that doesn't match the live query would land on an
         // empty-looking screen, so clear the filter before showing the field again
         searchInput.value = ''; query = '';
