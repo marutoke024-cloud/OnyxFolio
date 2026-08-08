@@ -400,15 +400,21 @@ export async function mount(root, params, ctx) {
     h('button.icon-btn.lb-nav.prev', { onclick: () => step(-1) }, [ico('back')]),
     h('button.icon-btn.lb-nav.next', { onclick: () => step(1), style: { transform: 'translateY(-50%) scaleX(-1)' } }, [ico('back')]),
   ]);
-  lbStage.addEventListener('click', (e) => { if (e.target === lbStage || e.target === lbWrap) closeLightbox(); });
+  // Tapping the dark margin leaves the picture — but never mid-drawing. A hand
+  // resting past the edge of a sketch used to close the lightbox outright.
+  lbStage.addEventListener('click', (e) => {
+    if (inkOn) return;
+    if (e.target === lbStage || e.target === lbWrap) closeLightbox();
+  });
   const inkBtn = h('button.icon-btn.lb-penbtn', { title: 'Pen — draw on this image', onclick: () => toggleInk() }, [ico('pen')]);
 
-  // --- view aids: mirror · desaturate · proportion grid ---
-  // Three ways of LOOKING at the picture, so none of them touch what is stored:
+  // --- view aids: original/marked · mirror · desaturate · proportion grid ---
+  // Four ways of LOOKING at the picture, so none of them touch what is stored:
   // strokes are kept against the true (unmirrored) image, and the flattened copy
   // always renders from the original bytes.
   const GRIDS = ['off', 'cross', 'thirds'];
-  let flipped = false, grayOn = false, gridIx = 0;
+  let flipped = false, grayOn = false, gridIx = 0, inkHidden = false;
+  const eyeBtn = h('button.icon-btn', { onclick: () => { inkHidden = !inkHidden; applyView(); } }, [ico('eye')]);
   const flipBtn = h('button.icon-btn', { title: '左右反転 — 形の狂いを見つける', onclick: () => { flipped = !flipped; applyView(); } }, [ico('flip')]);
   const grayBtn = h('button.icon-btn', { title: 'グレースケール — 明暗だけを見る', onclick: () => { grayOn = !grayOn; applyView(); } }, [ico('droplet')]);
   const gridBtn = h('button.icon-btn', { title: 'ガイド線 — なし / 十字線 / 三分割', onclick: () => { gridIx = (gridIx + 1) % GRIDS.length; applyView(); } }, [ico('grid')]);
@@ -420,8 +426,8 @@ export async function mount(root, params, ctx) {
       inkBtn,
       h('button.icon-btn', { title: 'Delete', onclick: deleteCurrent }, [ico('trash')]),
     ]),
-    // top-right, clear of the pen toolbar on the left at every screen size
-    h('div.lb-view', {}, [flipBtn, grayBtn, gridBtn]),
+    // a column down the right edge, mirroring the pen toolbar on the left
+    h('div.lb-view', {}, [eyeBtn, flipBtn, grayBtn, gridBtn]),
     lbClose,
   ]);
   document.body.append(lightbox);
@@ -537,10 +543,18 @@ export async function mount(root, params, ctx) {
     flipBtn.classList.toggle('on', flipped);
     grayBtn.classList.toggle('on', grayOn);
     gridBtn.classList.toggle('on', gridIx > 0);
+    // one tap to see the photo as it was — only offered when there IS ink to lift
+    const hasInk = ((images[lbIndex] || {}).markup || []).length > 0;
+    eyeBtn.disabled = !hasInk;
+    eyeBtn.classList.toggle('on', hasInk && inkHidden);
+    eyeBtn.title = inkHidden ? '加筆を表示する' : '加筆を隠してオリジナルを見る';
+    eyeBtn.innerHTML = '';
+    eyeBtn.append(ico(inkHidden ? 'eyeOff' : 'eye'));
     lbImg.classList.toggle('gray', grayOn);
+    lbInk.classList.toggle('ink-hidden', inkHidden);
     applyZoom();   // the mirror rides along in the wrapper transform, and repaints the grid
   }
-  function resetView() { flipped = false; grayOn = false; gridIx = 0; applyView(); }
+  function resetView() { flipped = false; grayOn = false; gridIx = 0; inkHidden = false; applyView(); }
 
   // fade the photo toward the pale plate so the ink stands out while tracing
   function applyDim() {
@@ -556,13 +570,13 @@ export async function mount(root, params, ctx) {
     inkUndoA.push(1); inkRedoA.length = 0;
     updateImage(im.id, { markup: im.markup });   // save as you go — nothing to lose on exit
     inkStroke = null;
-    renderInk(); inkUI();
+    renderInk(); inkUI(); applyView();
   }
   function inkUndo() {
     const im = images[lbIndex]; if (!im || !inkUndoA.length) return;
     const st = (im.markup || []).pop();
     if (st) { inkRedoA.push(st); inkUndoA.pop(); updateImage(im.id, { markup: im.markup }); renderInk(); }
-    inkUI();
+    inkUI(); applyView();
   }
   function inkRedo() {
     const im = images[lbIndex]; if (!im || !inkRedoA.length) return;
@@ -570,7 +584,7 @@ export async function mount(root, params, ctx) {
     im.markup.push(inkRedoA.pop());
     inkUndoA.push(1);
     updateImage(im.id, { markup: im.markup });
-    renderInk(); inkUI();
+    renderInk(); inkUI(); applyView();
   }
   function toggleInk() {
     inkOn = !inkOn;
@@ -580,9 +594,9 @@ export async function mount(root, params, ctx) {
     lightbox.classList.toggle('inking', inkOn);   // lets CSS move the tools clear of the toolbar
     // the zoom is deliberately left as it is — pinching is part of drawing now,
     // so a picture framed before reaching for the pen stays framed
-    if (inkOn) { inkUndoA.length = 0; inkRedoA.length = 0; inkUI(); renderInk(); }
+    if (inkOn) { inkUndoA.length = 0; inkRedoA.length = 0; inkHidden = false; inkUI(); renderInk(); }   // can't draw blind
     else dimOn = false;              // the fade is a drawing aid, not a view mode
-    applyDim();
+    applyDim(); applyView();
     // strokes were saved per-commit; toggling off just hides the tools
   }
   // While the pen is out one pointer draws and two pinch-zoom, so an iPad can
@@ -679,7 +693,7 @@ export async function mount(root, params, ctx) {
         }
         closeModal();
         if (dest.id === folderId) await reload();   // the copy landed in this very folder
-        renderInk(); inkUI();
+        renderInk(); inkUI(); applyView();
         toast(`「${dest.name}」に保存しました。`);
       } catch (e) {
         console.error('save copy failed', e);
@@ -834,7 +848,7 @@ export async function mount(root, params, ctx) {
   }
   // the ink is pinned to the <img> box and the guides to the stage, so both need
   // repainting whenever either changes size — a rotation, or a window resize
-  function paintOverlays() { renderInk(); renderGrid(); }
+  function paintOverlays() { renderInk(); renderGrid(); applyView(); }
   let lbRT;
   const onLbResize = () => {
     if (!lightbox.classList.contains('in')) return;
@@ -862,7 +876,9 @@ export async function mount(root, params, ctx) {
     showCurrent();
   }
   function lbKeys(e) {
-    if (e.key === 'Escape') closeLightbox();
+    // Escape steps out one layer at a time — pen first, then the picture — so it
+    // can't drop you back to the folder from the middle of a drawing either
+    if (e.key === 'Escape') inkOn ? toggleInk() : closeLightbox();
     else if (e.key === 'ArrowLeft') step(-1);
     else if (e.key === 'ArrowRight') step(1);
   }

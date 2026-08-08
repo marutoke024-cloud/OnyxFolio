@@ -166,7 +166,10 @@
 .lb-stage img.gray { filter: grayscale(1); }
 /* guides overlay the whole stage, outside the zoom transform (see renderGrid) */
 .lb-grid { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
-.lb-ink { position: absolute; z-index: 3; pointer-events: none; touch-action: none; }
+.lb-ink { position: absolute; z-index: 3; pointer-events: none; touch-action: none;
+  opacity: 1; transition: opacity .2s var(--ease-out); }
+/* one tap lifts the ink to reveal the untouched photo underneath */
+.lb-ink.ink-hidden { opacity: 0; }
 .lb-ink.drawing { pointer-events: auto; cursor: crosshair; }
 /* album's markup toolbar sits above the lightbox (120) and shows via .show */
 .mk-menu.lb-mk { z-index: 140; }
@@ -180,12 +183,17 @@
 .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; }
 .lb-nav.prev { left: 14px; } .lb-nav.next { right: 14px; }
 .lb-tools { position: fixed; top: 16px; left: 16px; z-index: 3; display: flex; gap: 8px; }
-/* view aids sit under the close button, on the opposite side to the pen toolbar */
-.lb-view { position: fixed; top: 68px; right: 16px; z-index: 3; display: flex; gap: 8px; }
+/* view aids: a column down the right edge, mirroring the pen toolbar on the left */
+.lb-view { position: fixed; top: 68px; right: 16px; z-index: 3; display: flex; flex-direction: column; gap: 8px; }
 .lightbox .icon-btn.on { background: var(--accent); color: var(--bg-0); border-color: var(--accent); }
-/* short screens: the pen toolbar reaches the top edge, so move the tools clear of it */
-@media (max-height: 720px) {
-  .lightbox.inking .lb-tools { left: 74px; }
+.lightbox .icon-btn:disabled { opacity: .3; pointer-events: none; }
+/* the column now runs down the right edge, so the "next" arrow steps aside */
+.lb-nav.next { right: 72px; }
+/* The pen toolbar is a vertically-centred column ~840px tall, so on anything
+   shorter than about (840 + two 56px tool rows) it reaches up past the top-left
+   buttons. Step them aside for as long as the pen is out. */
+@media (max-height: 960px) {
+  .lightbox.inking .lb-tools { left: 84px; }
 }
 .lb-side {
   width: clamp(260px, 26vw, 340px); flex-shrink: 0; border-left: 1px solid var(--line);
@@ -228,5 +236,6 @@
   .album-rail .rail-head, .album-rail .rail-sep { display: none; }
   .rail-tag { width: auto; white-space: nowrap; padding: 8px 14px; border: 1px solid var(--line); border-radius: 20px; }
   .rail-slideshow { width: auto; flex-shrink: 0; margin-bottom: 0; white-space: nowrap; border-radius: 20px; padding: 8px 16px; }
-  .lb-nav.prev { left: 8px; } .lb-nav.next { right: 8px; }
+  /* the view column still owns the right edge here, so only prev hugs it */
+  .lb-nav.prev { left: 8px; } .lb-nav.next { right: 60px; }
 }
